@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://files.catbox.moe/8r57lx.gif" alt="CERBERUS Demo" width="560" />
+  <img src="https://files.catbox.moe/c8nu8t.webp" alt="CERBERUS Demo" width="560" />
 </p>
 
 <h1 align="center">CERBERUS</h1>
