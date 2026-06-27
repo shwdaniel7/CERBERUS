@@ -1,0 +1,9 @@
+http
+https
+cmd.exe
+powershell
+regadd
+VirtualAlloc
+kernel32
+keylogger
+

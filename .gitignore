@@ -1,0 +1,25 @@
+# Configurações Secretas / Chaves de API
+.env
+
+# Pastas de Relatórios de Testes Locais
+reports/
+
+# Arquivos de ambiente virtual do Python (caso use)
+venv/
+.venv/
+env/
+
+# Arquivos temporários do Python e Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Configurações locais do editor de código (VS Code / PyCharm)
+.vscode/
+.idea/
+
+# Arquivos do sistema operacional
+Thumbs.db
+.DS_Store
