@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="https://i.imgur.com/5nG5MgO.gif" alt="CERBERUS Demo" width="560" />
+  <img src="https://i.imgur.com/7cFnPwY.gif" alt="CERBERUS Demo" width="560" />
 </p>
 
 <h1 align="center">CERBERUS</h1>
@@ -191,17 +191,17 @@ The application opens a file picker. After selecting a target file, choose one o
 --- Consulting local blacklist ---
 [+] Hash clean in local control list.
 --- Querying VirusTotal API ---
-[->] VirusTotal: Arquivo limpo ou desconhecido na base de dados deles.
+[->] VirusTotal: File not found or unknown in their database.
 --- Verifying magic signature ---
 [+] Detected real type: Windows Executable (EXE/DLL)
 --- Calculating Shannon entropy ---
 [+] Entropy score: 7.12/8.0
 [->] Status: NORMAL: Low randomness (Standard readable code/text)
 --- Analyzing file strings ---
-Total de strings: 134
-Alertas encontrados: 0
+Total number of strings: 134
+Alerts found: 0
 --- Exporting results ---
-[+] Relatório dinâmico gerado em: reports/report_filename_<shorthash>.json
+[+] Dynamic report generated on: reports/report_filename_<shorthash>.json
 ```
 
 ---
