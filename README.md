@@ -27,7 +27,7 @@
   <a href="https://github.com/shwdaniel7/CERBERUS"><img src="https://img.shields.io/github/repo-size/shwdaniel7/CERBERUS?style=for-the-badge" alt="Repository Size" /></a>
 </p>
 
-<p align="center">made by arneb • @shwdaniel7</p>
+<p align="center">made by daniel • @shwdaniel7</p>
 
 ---
 
@@ -57,9 +57,9 @@ CERBERUS implements three scan profiles:
 
 | Profile | Enabled Engines | Report Output |
 |---|---|---|
-| Full Scan | Local blacklist, VirusTotal lookup, string IOC scan, Shannon entropy, magic number header check | JSON report |
+| Full Scan | Local blacklist, VirusTotal lookup, string IOC scan, Shannon entropy, magic number header check | JSON, CSV, and HTML reports |
 | Quick Scan | Local blacklist, magic number header check | No report |
-| Custom Scan | User-selected combination of all available engines | Optional JSON report |
+| Custom Scan | User-selected combination of all available engines | Optional JSON, CSV, and HTML reports |
 
 The toolkit can:
 
@@ -70,7 +70,8 @@ The toolkit can:
 - calculate Shannon entropy for file randomness
 - identify file type from magic bytes and detect disguised PE executables
 - calculate a transparent risk score from the analysis indicators and explain the factors that raised it
-- emit a structured JSON report under `reports/`
+- emit structured JSON, CSV, and HTML reports under `reports/`
+- include extracted strings, file metadata, detected type, indicator count, CERBERUS version, and analysis duration in reports
 
 ---
 
@@ -103,7 +104,7 @@ CERBERUS/
 - `analyzer.py` is the entrypoint and orchestrates analysis flow.
 - `modules/` contains each analysis engine and utilities.
 - `iocs/` stores local indicators for blacklist and suspicious string matching.
-- `reports/` is the output folder for JSON report files.
+- `reports/` is the output folder for JSON, CSV, and HTML report files.
 - `samples/requirements.txt` contains the runtime dependencies used by the project.
 
 Modular separation keeps reputation checks, static analysis, and reporting isolated from the user interaction layer.
@@ -134,7 +135,7 @@ Modular separation keeps reputation checks, static analysis, and reporting isola
        │
        ├─► Optional suspicious string extraction
        │
-       ├─► Optional JSON report generation
+      ├─► Optional JSON, CSV, and HTML report generation
        │
        └─► End
 ```
@@ -249,8 +250,10 @@ Alerts found: 0
 
 ### `modules/reports.py`
 
-- Generates structured JSON output under `reports/`.
-- Includes metadata, selected engines, signatures, VirusTotal results, entropy scores, detected file type, magic alerts, and string alerts.
+- Generates JSON, CSV, and HTML output under `reports/`.
+- JSON contains metadata, selected engines, signatures, VirusTotal results, entropy scores, detected file type, magic alerts, all extracted strings, and string alerts.
+- CSV provides a compact, one-row summary suitable for comparing analyzed files.
+- HTML provides a color-coded risk summary and collapsible sections for alerts, extracted strings, and technical analysis.
 - Creates the `reports/` folder if it does not exist.
 
 ### `modules/menu.py`
@@ -293,7 +296,11 @@ Embedded strings are extracted from raw file bytes using a regex pattern for pri
     "archive_name": "suspicious_sample.exe",
     "full_path": "C:/samples/suspicious_sample.exe",
     "kb_size": 145.76,
-    "analysis_date": "2026-06-26 12:34:56"
+    "byte_size": 149258,
+    "extension": ".exe",
+    "analysis_date": "2026-06-26 12:34:56",
+    "cerberus_version": "1.0.0",
+    "analysis_duration_seconds": 0.526
   },
   "signatures": {
     "sha256": "24d004a104d4d540340c7831432f90a5..."
@@ -311,9 +318,20 @@ Embedded strings are extracted from raw file bytes using a regex pattern for pri
       "detected_type": "Windows Executable (EXE/DLL)",
       "masquerade_alert": "None (Extension matches header)"
     },
+    "all_strings": [
+      "kernel32",
+      "PowerShell"
+    ],
     "total_alerts": 1,
     "alerts": [
       "Suspect term found: 'kernel32'. Trigger: 'kernel32'."
+    ]
+  },
+  "risk_summary": {
+    "score": 20,
+    "level": "Moderate",
+    "factors": [
+      "1 suspicious string alert(s) (+4)"
     ]
   }
 }
