@@ -2,7 +2,7 @@ import json
 import os
 from datetime import datetime
 
-def save_report(filepath, kb_size, file_hash, result_vt, alerts, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert):
+def save_report(filepath, kb_size, file_hash, result_vt, alerts, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk):
     reports_folder = "reports"
     if not os.path.exists(reports_folder):
         os.makedirs(reports_folder)
@@ -59,6 +59,7 @@ def save_report(filepath, kb_size, file_hash, result_vt, alerts, detected_bl, co
         static_analysis["alerts"] = []
 
     report_data["statistics_analysis"] = static_analysis
+    report_data["risk_summary"] = risk
 
     short_hash = file_hash[:8] if file_hash else "no_hash"
     json_name = f"report_{base_name}_{short_hash}.json"

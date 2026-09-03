@@ -69,6 +69,7 @@ The toolkit can:
 - extract suspicious strings with regex matching
 - calculate Shannon entropy for file randomness
 - identify file type from magic bytes and detect disguised PE executables
+- calculate a transparent risk score from the analysis indicators and explain the factors that raised it
 - emit a structured JSON report under `reports/`
 
 ---
@@ -93,6 +94,7 @@ CERBERUS/
 │   ├── magic_numbers.py
 │   ├── menu.py
 │   ├── reports.py
+│   ├── risk.py
 │   └── strings.py
 ├── reports/
 
@@ -200,6 +202,10 @@ The application opens a file picker. After selecting a target file, choose one o
 --- Analyzing file strings ---
 Total number of strings: 134
 Alerts found: 0
+--- Risk Summary ---
+[!] Risk: Low (0/100)
+[+] Factors:
+  -> No risk indicators were detected
 --- Exporting results ---
 [+] Dynamic report generated on: reports/report_filename_<shorthash>.json
 ```
