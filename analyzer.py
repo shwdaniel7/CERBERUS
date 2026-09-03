@@ -5,6 +5,7 @@ from tkinter.filedialog import askopenfilename
 from modules.strings import strings 
 from modules.hashes import calc_sha256, check_local_blacklist, virustotal_check
 from modules.reports import save_report
+from modules.risk import calculate_risk
 from modules.menu import optionsMenu
 from modules.colors import paint_red, paint_green, paint_yellow, paint_cyan, paint_bold
 
@@ -95,10 +96,19 @@ def main():
         for alert in alerts:
             print(f"  -> {paint_red(alert)}")
 
+    risk = calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert)
+    risk_color = paint_red if risk["score"] >= 50 else paint_yellow if risk["score"] >= 20 else paint_green
+    print(paint_cyan("\n--- Risk Summary ---"))
+    risk_label = f"{risk['level']} ({risk['score']}/100)"
+    print(f"[!] Risk: {risk_color(risk_label)}")
+    print("[+] Factors:")
+    for factor in risk["factors"]:
+        print(f"  -> {factor}")
+
     if config["gerar_report"]:
         print(paint_cyan("\n--- Exporting Results ---"))
         caminho_salvo = save_report(
-            selected_file, kb_size, hash_result, result_vt, alerts, in_blacklist, config, entropy_score, entropy_status, real_type, magic_alert
+            selected_file, kb_size, hash_result, result_vt, alerts, in_blacklist, config, entropy_score, entropy_status, real_type, magic_alert, risk
         )
         print(paint_green(f"[+] Dynamic report generated at: {caminho_salvo}"))
     else:
