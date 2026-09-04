@@ -2,6 +2,7 @@ import hashlib
 import requests
 import os
 from dotenv import load_dotenv
+from modules.iocs import load_blacklist
 
 load_dotenv()
 
@@ -17,27 +18,8 @@ def calc_sha256(filepath):
     return sha256_hash.hexdigest()
 
 def check_local_blacklist(file_hash):
-    list_path = os.path.join("iocs", "blacklist.txt")
-    
-    if not os.path.exists(list_path):
-        os.makedirs("iocs", exist_ok=True)
-        with open(list_path, "w") as f:
-            f.write("")
-        return False
-
-    with open(list_path, "r") as f:
-        for linha in f:
-            linha_limpa = linha.strip()
-            
-            if not linha_limpa or linha_limpa.startswith("#"):
-                continue
-                
-            hash_salvo = linha_limpa.split("#")[0].strip().lower()
-            
-            if file_hash.lower() == hash_salvo:
-                return True
-                
-    return False
+    valid_hashes, _, _ = load_blacklist()
+    return file_hash.lower() in valid_hashes
 
 def virustotal_check(file_hash):
     if not VT_API_KEY:
