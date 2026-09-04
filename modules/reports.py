@@ -237,16 +237,25 @@ def list_analysis_history(reports_folder="reports"):
         print(f"    Report: {os.path.join(reports_folder, filename)}")
 
 
-def save_batch_summary(folder_path, results, duration_seconds, reports_folder="reports"):
+def save_batch_summary(folder_path, results, duration_seconds, reports_folder="reports", skipped=None):
     os.makedirs(reports_folder, exist_ok=True)
+    skipped = skipped or []
     summary = {
         "folder": folder_path,
         "analysis_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "files_found": len(results),
+        "files_found": len(results) + len(skipped),
+        "files_selected": len(results),
         "files_analyzed": sum(1 for result in results if result.get("success")),
         "files_failed": sum(1 for result in results if not result.get("success")),
+        "reports_generated": sum(1 for result in results if result.get("report_generated")),
+        "reports_skipped_by_risk": sum(
+            1 for result in results
+            if result.get("success") and not result.get("report_generated")
+        ),
+        "files_skipped": len(skipped),
         "duration_seconds": duration_seconds,
         "risk_levels": {},
+        "skipped_files": skipped,
         "files": results,
     }
     for result in results:

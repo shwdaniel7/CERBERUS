@@ -13,6 +13,14 @@ from modules.colors import paint_red, paint_green, paint_yellow, paint_cyan, pai
 root = tk.Tk()
 root.withdraw()
 
+BATCH_ASSET_EXTENSIONS = {
+    ".apng", ".avi", ".bmp", ".css", ".eot", ".flac", ".gif", ".ico",
+    ".jpeg", ".jpg", ".m4a", ".mkv", ".mov", ".mp3", ".mp4", ".ogg",
+    ".otf", ".png", ".scss", ".svg", ".tif", ".tiff", ".ttf", ".wav",
+    ".webm", ".webp", ".woff", ".woff2",
+}
+BATCH_IGNORED_DIRECTORIES = {".git", ".venv", "__pycache__", "node_modules"}
+
 def uploadFile():
     filepath = askopenfilename(
         title="Select a file", initialdir="C:/", filetypes=[("All", "*.*")]
@@ -59,14 +67,6 @@ def analyze_file(selected_file, config, show_details=True):
             else:
                 print(paint_green("[+] Hash is clean in the local control list."))
 
-    if config["virustotal"]:
-        if show_details:
-            print(paint_cyan("\n--- Consulting VirusTotal API ---"))
-        result_vt = virustotal_check(hash_result)
-        if show_details:
-            output_color = paint_red if "Flagged" in result_vt else paint_green
-            print(f"[->] {output_color(result_vt)}")
-
     if config["magic_numbers"]:
         if show_details:
             print(paint_cyan("\n--- Consulting Magic Signature ---"))
@@ -97,10 +97,32 @@ def analyze_file(selected_file, config, show_details=True):
             for alert in alerts:
                 print(f"  -> {paint_red(alert)}")
 
+    suspicious_locally = bool(
+        in_blacklist
+        or alerts
+        or magic_alert
+        or "CRITICAL" in entropy_status
+        or "SUSPICIOUS" in entropy_status
+    )
+    should_query_virustotal = config["virustotal"] and (
+        not config.get("virustotal_suspicious_only") or suspicious_locally
+    )
+    if should_query_virustotal:
+        if show_details:
+            print(paint_cyan("\n--- Consulting VirusTotal API ---"))
+        result_vt = virustotal_check(hash_result)
+        if show_details:
+            output_color = paint_red if "Flagged" in result_vt or "429" in result_vt else paint_green
+            print(f"[->] {output_color(result_vt)}")
+    elif config["virustotal"]:
+        result_vt = "VirusTotal: Skipped because no local indicators were found."
+
     risk = calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert)
     analysis_duration = round(time.perf_counter() - analysis_start, 3)
     report_path = None
-    if config["gerar_report"]:
+    minimum_report_score = config.get("minimum_report_score", 0)
+    should_generate_report = config["gerar_report"] and risk["score"] >= minimum_report_score
+    if should_generate_report:
         report_path = save_report(
             selected_file, kb_size, hash_result, result_vt, alerts, all_strings,
             in_blacklist, config, entropy_score, entropy_status, real_type,
@@ -115,33 +137,55 @@ def analyze_file(selected_file, config, show_details=True):
         "risk": risk,
         "analysis_duration": analysis_duration,
         "report": report_path,
+        "report_generated": should_generate_report,
     }
 
 
 def analyze_folder(folder_path, config):
     files = []
-    for root_path, _, filenames in os.walk(folder_path):
+    skipped = []
+    for root_path, directories, filenames in os.walk(folder_path):
+        directories[:] = [
+            directory for directory in directories
+            if directory.lower() not in BATCH_IGNORED_DIRECTORIES
+        ]
         files.extend(os.path.join(root_path, name) for name in filenames)
     files.sort()
     if not files:
         print(paint_yellow("[-] No files found in the selected folder."))
         return
 
-    print(paint_cyan(f"\n--- Batch Analysis: {len(files)} file(s) ---"))
+    candidate_files = []
+    for filepath in files:
+        extension = os.path.splitext(filepath)[1].lower()
+        if extension in BATCH_ASSET_EXTENSIONS:
+            skipped.append({
+                "file": os.path.basename(filepath),
+                "path": filepath,
+                "reason": "asset extension excluded",
+            })
+        else:
+            candidate_files.append(filepath)
+
+    print(paint_cyan(
+        f"\n--- Batch Analysis: {len(candidate_files)} candidate file(s) "
+        f"({len(skipped)} asset(s) skipped) ---"
+    ))
     batch_start = time.perf_counter()
     results = []
-    for index, filepath in enumerate(files, start=1):
-        print(paint_cyan(f"\n[{index}/{len(files)}] Analyzing {filepath}"))
+    for index, filepath in enumerate(candidate_files, start=1):
+        print(paint_cyan(f"\n[{index}/{len(candidate_files)}] Analyzing {filepath}"))
         try:
             result = analyze_file(filepath, config, show_details=False)
             results.append(result)
-            print(f"[+] Risk: {result['risk_level']} ({result['risk_score']}/100)")
+            report_status = "report generated" if result["report_generated"] else "report skipped"
+            print(f"[+] Risk: {result['risk_level']} ({result['risk_score']}/100) - {report_status}")
         except (OSError, ValueError) as error:
             results.append({"file": os.path.basename(filepath), "path": filepath, "success": False, "error": str(error)})
             print(paint_red(f"[-] Analysis failed: {error}"))
 
     duration = round(time.perf_counter() - batch_start, 3)
-    summary_path = save_batch_summary(folder_path, results, duration)
+    summary_path = save_batch_summary(folder_path, results, duration, skipped=skipped)
     print(paint_green(f"\n[+] Batch summary generated at: {summary_path}"))
 
 def main():

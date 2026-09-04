@@ -36,6 +36,8 @@ def optionsMenu():
                 "entropy": True,
                 "magic_numbers": True,
                 "gerar_report": True,
+                "minimum_report_score": 50,
+                "virustotal_suspicious_only": True,
             }
         
         if choice == "1":

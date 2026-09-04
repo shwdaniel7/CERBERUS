@@ -40,11 +40,14 @@ def check_local_blacklist(file_hash):
     return False
 
 def virustotal_check(file_hash):
+    if not VT_API_KEY:
+        return "VirusTotal: API key not configured."
+
     url = f"https://www.virustotal.com/api/v3/files/{file_hash}"
     headers = {"x-apikey": VT_API_KEY}
 
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=15)
         
         if response.status_code == 200:
             dados = response.json()
@@ -54,6 +57,8 @@ def virustotal_check(file_hash):
             return f"Flagged by VirusTotal: {maliciosos}/{total_engines} Antivirus softwares detected a threat."
         elif response.status_code == 404:
             return "VirusTotal: File is clean or unknown in their database."
+        elif response.status_code == 429:
+            return "VirusTotal: API rate limit or quota reached (HTTP 429)."
         else:
             return f"VirusTotal: Error in API (Code {response.status_code})"
     
