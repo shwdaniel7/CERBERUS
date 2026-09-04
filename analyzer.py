@@ -5,7 +5,7 @@ from tkinter.filedialog import askopenfilename
 
 from modules.strings import strings 
 from modules.hashes import calc_sha256, check_local_blacklist, virustotal_check
-from modules.reports import save_report
+from modules.reports import list_analysis_history, save_report
 from modules.risk import calculate_risk
 from modules.menu import optionsMenu
 from modules.colors import paint_red, paint_green, paint_yellow, paint_cyan, paint_bold
@@ -24,6 +24,12 @@ def main():
     print(paint_bold("          CERBERUS"))
     print(paint_cyan("======================================="))
     
+    config = optionsMenu()
+
+    if config.get("history"):
+        list_analysis_history()
+        return
+
     print("[*] Select a file to begin.")
     selected_file = uploadFile()
 
@@ -36,7 +42,6 @@ def main():
     print(f"\n[+] File: {paint_bold(selected_file)}")
     print(f"[+] Size: {paint_yellow(f'{kb_size:.2f} KB')}")
     
-    config = optionsMenu()
     analysis_start = time.perf_counter()
 
     hash_result = None

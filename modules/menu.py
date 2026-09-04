@@ -7,6 +7,7 @@ def optionsMenu():
     print(f"  {paint_yellow('1')} - Full Scan (All checks + Report)")
     print(f"  {paint_yellow('2')} - Quick Scan (Local Blacklist + Header)")
     print(f"  {paint_yellow('3')} - Custom Scan (Choose your options)")
+    print(f"  {paint_yellow('4')} - Analysis History")
     print(paint_cyan("======================================="))
     
     config = {
@@ -19,7 +20,10 @@ def optionsMenu():
     }
     
     while True:
-        choice = input("[?] Select scan type (1-3): ").strip()
+        choice = input("[?] Select an option (1-4): ").strip()
+
+        if choice == "4":
+            return {"history": True}
         
         if choice == "1":
             print("\n[*] Profiling: Full Scan selected. Activating all engines...")
@@ -49,4 +53,4 @@ def optionsMenu():
             return config
             
         else:
-            print("[-] Invalid choice. Please enter 1, 2, or 3.")
+            print("[-] Invalid choice. Please enter a number from 1 to 4.")
