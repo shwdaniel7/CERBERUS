@@ -1,4 +1,5 @@
 import os
+import time
 import tkinter as tk
 from tkinter.filedialog import askopenfilename
 
@@ -36,6 +37,7 @@ def main():
     print(f"[+] Size: {paint_yellow(f'{kb_size:.2f} KB')}")
     
     config = optionsMenu()
+    analysis_start = time.perf_counter()
 
     hash_result = None
     in_blacklist = None
@@ -105,12 +107,17 @@ def main():
     for factor in risk["factors"]:
         print(f"  -> {factor}")
 
+    analysis_duration = round(time.perf_counter() - analysis_start, 3)
+
     if config["gerar_report"]:
         print(paint_cyan("\n--- Exporting Results ---"))
         caminho_salvo = save_report(
-            selected_file, kb_size, hash_result, result_vt, alerts, in_blacklist, config, entropy_score, entropy_status, real_type, magic_alert, risk
+            selected_file, kb_size, hash_result, result_vt, alerts, all_strings, in_blacklist, config, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration
         )
         print(paint_green(f"[+] Dynamic report generated at: {caminho_salvo}"))
+        report_base = os.path.splitext(caminho_salvo)[0]
+        print(paint_green(f"[+] CSV report generated at: {report_base}.csv"))
+        print(paint_green(f"[+] HTML report generated at: {report_base}.html"))
     else:
         print(paint_yellow("\n[+] Analysis completed without generating a report."))
 
