@@ -61,6 +61,7 @@ CERBERUS implements three scan profiles:
 | Quick Scan | Local blacklist, magic number header check | No report |
 | Custom Scan | User-selected combination of all available engines | Optional JSON, CSV, and HTML reports |
 | Analysis History | Lists previous JSON reports with optional name, hash, or risk-level filtering | Terminal listing |
+| Batch Scan | Full Scan applied to every file in a selected folder | Individual reports plus batch summary |
 
 The toolkit can:
 
@@ -74,6 +75,7 @@ The toolkit can:
 - emit structured JSON, CSV, and HTML reports under `reports/`
 - include extracted strings, file metadata, detected type, indicator count, CERBERUS version, and analysis duration in reports
 - browse previous analyses and filter them by file name, SHA-256 hash, or risk level
+- select a folder and analyze all files recursively with individual reports and a general batch summary
 
 ---
 
@@ -123,9 +125,12 @@ Modular separation keeps reputation checks, static analysis, and reporting isola
        ├─► Menu selection
        │      ├─ Full Scan
        │      ├─ Quick Scan
-       │      └─ Custom Scan
+      │      ├─ Custom Scan
+      │      └─ Batch Scan
       │
       ├─► Optional analysis history lookup
+      │
+      ├─► Optional folder analysis and batch summary
        │
        ├─► Optional SHA-256 hash calculation
        │
@@ -187,9 +192,12 @@ The application opens a file picker. After selecting a target file, choose one o
   2 - Quick Scan (Local Blacklist + Header)
   3 - Custom Scan (Choose your options)
   4 - Analysis History
+  5 - Batch Scan (Full Scan on a folder)
 ```
 
 Select `4` to browse reports already stored in `reports/`. The history view can be filtered by file name, SHA-256 hash, or risk level, and displays the analysis date, risk score, hash, and report path.
+
+Select `5` to choose a folder. CERBERUS recursively analyzes every file using the Full Scan profile, generates individual JSON, CSV, and HTML reports, and creates a `batch_summary_<timestamp>.json` file with totals, risk-level counts, failures, and report references.
 
 ### Example interaction
 

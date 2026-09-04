@@ -235,3 +235,26 @@ def list_analysis_history(reports_folder="reports"):
         print(f"    Date: {date} | Risk: {level} ({score}/100)")
         print(f"    SHA-256: {sha256}")
         print(f"    Report: {os.path.join(reports_folder, filename)}")
+
+
+def save_batch_summary(folder_path, results, duration_seconds, reports_folder="reports"):
+    os.makedirs(reports_folder, exist_ok=True)
+    summary = {
+        "folder": folder_path,
+        "analysis_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "files_found": len(results),
+        "files_analyzed": sum(1 for result in results if result.get("success")),
+        "files_failed": sum(1 for result in results if not result.get("success")),
+        "duration_seconds": duration_seconds,
+        "risk_levels": {},
+        "files": results,
+    }
+    for result in results:
+        level = result.get("risk_level", "Unknown")
+        summary["risk_levels"][level] = summary["risk_levels"].get(level, 0) + 1
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    json_path = os.path.join(reports_folder, f"batch_summary_{timestamp}.json")
+    with open(json_path, "w", encoding="utf-8") as summary_file:
+        json.dump(summary, summary_file, indent=4, ensure_ascii=False)
+    return json_path
