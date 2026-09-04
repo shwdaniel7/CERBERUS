@@ -1,5 +1,12 @@
 import re
 
+HIGH_SIGNAL_TERMS = {
+    "keylogger",
+    "virtualalloc",
+    "powershell",
+    "cmd.exe",
+}
+
 
 def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert):
     score = 0
@@ -28,9 +35,18 @@ def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert)
         factors.append("High entropy, possible compression or obfuscation (+8)")
 
     if alerts:
-        string_points = min(20, len(alerts) * 4)
+        high_signal_alerts = sum(
+            any(term in alert.lower() for term in HIGH_SIGNAL_TERMS)
+            for alert in alerts
+        )
+        string_points = min(30, len(alerts) * 4 + high_signal_alerts * 16)
         score += string_points
-        factors.append(f"{len(alerts)} suspicious string alert(s) (+{string_points})")
+        if high_signal_alerts:
+            factors.append(
+                f"{high_signal_alerts} high-signal string alert(s) (+{string_points})"
+            )
+        else:
+            factors.append(f"{len(alerts)} suspicious string alert(s) (+{string_points})")
 
     if magic_alert:
         score += 15
