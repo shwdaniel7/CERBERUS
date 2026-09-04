@@ -72,10 +72,12 @@ The toolkit can:
 - calculate Shannon entropy for file randomness
 - identify file type from magic bytes and detect disguised PE executables
 - calculate a transparent risk score from the analysis indicators and explain the factors that raised it
+- assign higher weight to high-signal indicators such as `keylogger`, `VirtualAlloc`, PowerShell, and `cmd.exe`
 - emit structured JSON, CSV, and HTML reports under `reports/`
 - include extracted strings, file metadata, detected type, indicator count, CERBERUS version, and analysis duration in reports
 - browse previous analyses and filter them by file name, SHA-256 hash, or risk level
-- select a folder and analyze all files recursively with individual reports and a general batch summary
+- select a folder and analyze relevant files recursively, generating individual reports only when the risk is High or Critical
+- skip common static assets and generated dependency folders during batch analysis
 
 ---
 
@@ -197,7 +199,7 @@ The application opens a file picker. After selecting a target file, choose one o
 
 Select `4` to browse reports already stored in `reports/`. The history view can be filtered by file name, SHA-256 hash, or risk level, and displays the analysis date, risk score, hash, and report path.
 
-Select `5` to choose a folder. CERBERUS recursively analyzes every file using the Full Scan profile, generates individual JSON, CSV, and HTML reports, and creates a `batch_summary_<timestamp>.json` file with totals, risk-level counts, failures, and report references.
+Select `5` to choose a folder. CERBERUS recursively analyzes relevant files using the Full Scan profile, but only generates individual JSON, CSV, and HTML reports when the risk score reaches `50/100` (`High` or `Critical`). Lower-risk files are still included in the analysis summary without creating individual reports. The batch consults VirusTotal only when local indicators are present, which avoids spending API quota on routine files. The `batch_summary_<timestamp>.json` file contains totals, risk-level counts, generated reports, risk-filtered reports, failures, skipped files, and report references. Common assets such as images, fonts, audio, and video are skipped by default, as are `.git`, `.venv`, `__pycache__`, and `node_modules` directories.
 
 ### Example interaction
 
