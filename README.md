@@ -60,6 +60,7 @@ CERBERUS implements three scan profiles:
 | Full Scan | Local blacklist, VirusTotal lookup, string IOC scan, Shannon entropy, magic number header check | JSON, CSV, and HTML reports |
 | Quick Scan | Local blacklist, magic number header check | No report |
 | Custom Scan | User-selected combination of all available engines | Optional JSON, CSV, and HTML reports |
+| Analysis History | Lists previous JSON reports with optional name, hash, or risk-level filtering | Terminal listing |
 
 The toolkit can:
 
@@ -72,6 +73,7 @@ The toolkit can:
 - calculate a transparent risk score from the analysis indicators and explain the factors that raised it
 - emit structured JSON, CSV, and HTML reports under `reports/`
 - include extracted strings, file metadata, detected type, indicator count, CERBERUS version, and analysis duration in reports
+- browse previous analyses and filter them by file name, SHA-256 hash, or risk level
 
 ---
 
@@ -122,6 +124,8 @@ Modular separation keeps reputation checks, static analysis, and reporting isola
        │      ├─ Full Scan
        │      ├─ Quick Scan
        │      └─ Custom Scan
+      │
+      ├─► Optional analysis history lookup
        │
        ├─► Optional SHA-256 hash calculation
        │
@@ -182,7 +186,10 @@ The application opens a file picker. After selecting a target file, choose one o
   1 - Full Scan (All checks + Report)
   2 - Quick Scan (Local Blacklist + Header)
   3 - Custom Scan (Choose your options)
+  4 - Analysis History
 ```
+
+Select `4` to browse reports already stored in `reports/`. The history view can be filtered by file name, SHA-256 hash, or risk level, and displays the analysis date, risk score, hash, and report path.
 
 ### Example interaction
 

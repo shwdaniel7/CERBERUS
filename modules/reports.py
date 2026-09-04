@@ -185,3 +185,53 @@ def save_html_report(report_data, reports_folder, base_name, short_hash):
 """
     with open(html_path, "w", encoding="utf-8") as html_file:
         html_file.write(document)
+
+
+def list_analysis_history(reports_folder="reports"):
+    if not os.path.isdir(reports_folder):
+        print("\n[-] No analysis history found.")
+        return
+
+    search_term = input(
+        "\n[?] Filter by file name, SHA-256, or risk level (leave blank for all): "
+    ).strip().lower()
+    reports = []
+
+    for filename in os.listdir(reports_folder):
+        if not filename.lower().endswith(".json"):
+            continue
+        report_path = os.path.join(reports_folder, filename)
+        try:
+            with open(report_path, "r", encoding="utf-8") as report_file:
+                report_data = json.load(report_file)
+        except (OSError, json.JSONDecodeError):
+            continue
+
+        metadata = report_data.get("metadata", {})
+        signatures = report_data.get("signatures", {})
+        risk = report_data.get("risk_summary", {})
+        searchable_values = [
+            str(metadata.get("archive_name", "")),
+            str(signatures.get("sha256", "")) if isinstance(signatures, dict) else "",
+            str(risk.get("level", "")),
+        ]
+        if search_term and not any(search_term in value.lower() for value in searchable_values):
+            continue
+        reports.append((metadata, signatures, risk, filename))
+
+    reports.sort(key=lambda item: item[0].get("analysis_date", ""), reverse=True)
+    print(f"\n--- Analysis History ({len(reports)} result(s)) ---")
+    if not reports:
+        print("[-] No reports matched the selected filter.")
+        return
+
+    for metadata, signatures, risk, filename in reports:
+        file_name = metadata.get("archive_name", "Unknown file")
+        date = metadata.get("analysis_date", "Unknown date")
+        sha256 = signatures.get("sha256", "Not available") if isinstance(signatures, dict) else "Not available"
+        level = risk.get("level", "Unknown")
+        score = risk.get("score", "-")
+        print(f"\n[+] {file_name}")
+        print(f"    Date: {date} | Risk: {level} ({score}/100)")
+        print(f"    SHA-256: {sha256}")
+        print(f"    Report: {os.path.join(reports_folder, filename)}")
