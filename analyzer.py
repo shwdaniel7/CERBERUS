@@ -5,6 +5,7 @@ from tkinter.filedialog import askdirectory, askopenfilename
 
 from modules.strings import strings 
 from modules.hashes import calc_sha256, check_local_blacklist, virustotal_check
+from modules.iocs import print_ioc_integrity
 from modules.reports import list_analysis_history, save_batch_summary, save_report
 from modules.risk import calculate_risk
 from modules.menu import optionsMenu
@@ -197,6 +198,10 @@ def main():
 
     if config.get("history"):
         list_analysis_history()
+        return
+
+    if config.get("ioc_integrity"):
+        print_ioc_integrity()
         return
 
     if config.get("batch"):

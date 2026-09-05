@@ -62,6 +62,7 @@ CERBERUS implements three scan profiles:
 | Custom Scan | User-selected combination of all available engines | Optional JSON, CSV, and HTML reports |
 | Analysis History | Lists previous JSON reports with optional name, hash, or risk-level filtering | Terminal listing |
 | Batch Scan | Full Scan applied to every file in a selected folder | Individual reports plus batch summary |
+| IOC Lists Integrity | Validates local hashes and suspicious terms, reporting valid and malformed entries | Terminal listing |
 
 The toolkit can:
 
@@ -78,6 +79,7 @@ The toolkit can:
 - browse previous analyses and filter them by file name, SHA-256 hash, or risk level
 - select a folder and analyze relevant files recursively, generating individual reports only when the risk is High or Critical
 - skip common static assets and generated dependency folders during batch analysis
+- validate and reload IOC lists without changing the source code
 
 ---
 
@@ -195,11 +197,14 @@ The application opens a file picker. After selecting a target file, choose one o
   3 - Custom Scan (Choose your options)
   4 - Analysis History
   5 - Batch Scan (Full Scan on a folder)
+  6 - IOC Lists Integrity
 ```
 
 Select `4` to browse reports already stored in `reports/`. The history view can be filtered by file name, SHA-256 hash, or risk level, and displays the analysis date, risk score, hash, and report path.
 
 Select `5` to choose a folder. CERBERUS recursively analyzes relevant files using the Full Scan profile, but only generates individual JSON, CSV, and HTML reports when the risk score reaches `50/100` (`High` or `Critical`). Lower-risk files are still included in the analysis summary without creating individual reports. The batch consults VirusTotal only when local indicators are present, which avoids spending API quota on routine files. The `batch_summary_<timestamp>.json` file contains totals, risk-level counts, generated reports, risk-filtered reports, failures, skipped files, and report references. Common assets such as images, fonts, audio, and video are skipped by default, as are `.git`, `.venv`, `__pycache__`, and `node_modules` directories.
+
+Select `6` to validate the IOC files. `iocs/blacklist.txt` accepts one SHA-256 hash per line, with optional `#` comments. `iocs/suspect_strings.txt` accepts one suspicious term per line. Invalid hashes, empty terms, and malformed entries are ignored during analysis and reported by this menu option. Both files are reloaded from disk for every analysis, so updating them does not require a code change or restart.
 
 ### Example interaction
 

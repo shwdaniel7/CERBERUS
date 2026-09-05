@@ -1,25 +1,10 @@
-import os
 import re
+from modules.iocs import load_suspect_terms
 
 def strings(filepath):
-    # Novo caminho na pasta unificada iocs/
-    db_path = os.path.join("iocs", "suspect_strings.txt")
-    suspect_terms = []
-
-    # Validação segura: se o arquivo não existir, avisa e retorna listas vazias
-    if not os.path.exists(db_path):
-        print(
-            f"[-] Warning: '{db_path}' not found. Skipping string signature scanning."
-        )
+    suspect_terms, _, db_path = load_suspect_terms()
+    if not suspect_terms and not db_path:
         return [], []
-
-    # Carrega os termos limpando comentários e espaços invisíveis
-    with open(db_path, "r", encoding="utf-8") as f:
-        for linha in f:
-            linha_limpa = linha.strip()
-            if not linha_limpa or linha_limpa.startswith("#"):
-                continue
-            suspect_terms.append(linha_limpa)
 
     text_pattern = re.compile(b"[A-Za-z0-9/\\-.:_]{4,}")
     filtered_strings = []
