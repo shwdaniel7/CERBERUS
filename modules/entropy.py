@@ -28,12 +28,12 @@ def calculate_entropy(filepath):
     entropy_score = round(entropy, 2)
     
     if extensao in formatos_compactados:
-        status = "NORMAL: High entropy is expected for this file format (Compressed Media/Archive)"
+        status = "NORMAL: High entropy is expected for this file format (compressed media/archive)"
     else:
         if entropy_score > 7.2:
-            status = "CRITICAL: Highly Encrypted or Packed (Very likely Obfuscated Malware)"
+            status = "INDICATOR: Very high entropy may indicate compression, encryption, or packing; not proof of malware"
         elif entropy_score > 6.7:
-            status = "SUSPICIOUS: Compressed or Packed data detected (UPX/Obfuscation risk)"
+            status = "INDICATOR: High entropy may indicate compression or packing; not proof of malware"
         else:
             status = "NORMAL: Low randomness (Standard readable code/text)"
         

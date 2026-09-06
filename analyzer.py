@@ -85,7 +85,7 @@ def analyze_file(selected_file, config, show_details=True):
         entropy_score, entropy_status = calculate_entropy(selected_file)
         if show_details:
             print(f"[+] Shannon Entropy Score: {paint_yellow(f'{entropy_score}/8.0')}")
-            status_color = paint_red if "CRITICAL" in entropy_status or "SUSPICIOUS" in entropy_status else paint_green
+            status_color = paint_yellow if "INDICATOR" in entropy_status else paint_green
             print(f"[->] Status: {status_color(entropy_status)}")
 
     if config["strings"]:
@@ -102,8 +102,6 @@ def analyze_file(selected_file, config, show_details=True):
         in_blacklist
         or alerts
         or magic_alert
-        or "CRITICAL" in entropy_status
-        or "SUSPICIOUS" in entropy_status
     )
     should_query_virustotal = config["virustotal"] and (
         not config.get("virustotal_suspicious_only") or suspicious_locally
