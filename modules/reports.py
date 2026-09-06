@@ -75,7 +75,7 @@ def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, de
     vt_match = re.search(r"Flagged by VirusTotal: (\d+)/(\d+)", result_vt or "")
     vt_indicators = int(vt_match.group(1)) if vt_match else 0
     indicator_count = len(alerts) + int(bool(detected_bl)) + int(bool(magic_alert)) + vt_indicators
-    if "CRITICAL" in (entropy_status or "") or "SUSPICIOUS" in (entropy_status or ""):
+    if "INDICATOR" in (entropy_status or ""):
         indicator_count += 1
     static_analysis["indicator_count"] = indicator_count
 

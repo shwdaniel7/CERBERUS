@@ -27,12 +27,12 @@ def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert)
                 f"VirusTotal flagged {malicious_count}/{total_engines} engines (+{virus_total_points})"
             )
 
-    if "CRITICAL" in (entropy_status or ""):
-        score += 15
-        factors.append("Very high entropy, possible packing or encryption (+15)")
-    elif "SUSPICIOUS" in (entropy_status or ""):
-        score += 8
-        factors.append("High entropy, possible compression or obfuscation (+8)")
+    if "INDICATOR" in (entropy_status or ""):
+        entropy_points = 5 if "Very high" in entropy_status else 3
+        score += entropy_points
+        factors.append(
+            f"High entropy is an indicator of possible compression or packing, not proof of malware (+{entropy_points})"
+        )
 
     if alerts:
         high_signal_alerts = sum(

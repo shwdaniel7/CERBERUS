@@ -70,7 +70,7 @@ The toolkit can:
 - compare the fingerprint against `iocs/blacklist.txt`
 - query VirusTotal using `VT_API_KEY` from `.env`
 - extract suspicious strings with regex matching
-- calculate Shannon entropy for file randomness
+- calculate Shannon entropy as an indicator of possible compression or packing
 - identify file type from magic bytes and detect disguised PE executables
 - calculate a transparent risk score from the analysis indicators and explain the factors that raised it
 - assign higher weight to high-signal indicators such as `keylogger`, `VirtualAlloc`, PowerShell, and `cmd.exe`
@@ -113,7 +113,7 @@ CERBERUS/
 - `modules/` contains each analysis engine and utilities.
 - `iocs/` stores local indicators for blacklist and suspicious string matching.
 - `reports/` is the output folder for JSON, CSV, and HTML report files.
-- `samples/requirements.txt` contains the runtime dependencies used by the project.
+- `requirements.txt` contains the runtime dependencies used by the project.
 
 Modular separation keeps reputation checks, static analysis, and reporting isolated from the user interaction layer.
 
@@ -261,13 +261,14 @@ Alerts found: 0
 - Computes Shannon entropy across all bytes in the file.
 - Uses a 256-bin frequency distribution.
 - Classifies high entropy differently for compressed and media formats.
-- Reports `CRITICAL`, `SUSPICIOUS`, or `NORMAL` based on the implementation thresholds.
+- Reports `INDICATOR` or `NORMAL`; high entropy is evidence of possible compression, encryption, or packing, not proof of malware.
 
 ### `modules/strings.py`
 
 - Extracts printable ASCII-like strings from binary content using regex.
 - Loads suspicious indicators from `iocs/suspect_strings.txt`.
-- Reports any embedded strings that match local IOC terms.
+- Matches IOC terms as tokens instead of arbitrary substrings.
+- Ignores common benign terms such as `http`, `https`, `KERNEL32.dll`, and Python module names when generating alerts.
 - Returns the extracted strings and any triggered alerts.
 
 ### `modules/reports.py`
@@ -302,11 +303,11 @@ CERBERUS inspects the file header bytes to determine the real file type. It trea
 
 ### Shannon Entropy
 
-Entropy is calculated from byte frequency distribution. The implementation reports a risk level for high randomness and treats compressed media formats as expected high-entropy cases.
+Entropy is calculated from byte frequency distribution. High entropy is reported as an indicator of possible compression, encryption, or packing, while compressed media formats are treated as expected cases. Entropy alone contributes only a small amount to the score and does not make a file suspicious or trigger a VirusTotal lookup.
 
 ### IOC matching and regex extraction
 
-Embedded strings are extracted from raw file bytes using a regex pattern for printable sequences. These strings are compared against the local `iocs/suspect_strings.txt` list for suspicious terms.
+Embedded strings are extracted from raw file bytes using a regex pattern for printable sequences. IOC terms from `iocs/suspect_strings.txt` are matched as complete tokens, and common benign values such as protocol names, Windows runtime DLLs, and Python modules are kept as extracted strings without being promoted to alerts. A string alert is evidence to combine with other signals, not proof by itself.
 
 ---
 
