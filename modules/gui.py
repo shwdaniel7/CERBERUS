@@ -1,8 +1,15 @@
 import os
+import json
 import queue
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+
+from modules.iocs import inspect_ioc_lists
+from modules.analysis_cache import AnalysisCache
+from modules.reports import CERBERUS_VERSION, save_batch_summary
 
 
 COLORS = {
@@ -31,6 +38,8 @@ class CerberusApp(tk.Tk):
         self.completed_engines = 0
         self.last_result = None
         self.engine_states = {}
+        self.active_view = "analysis"
+        self.view_widgets = {}
 
         self.title("CERBERUS / Static Malware Analysis Engine")
         self.geometry("1240x780")
@@ -82,6 +91,11 @@ class CerberusApp(tk.Tk):
         self.full_button = ttk.Button(controls, text="Full scan", command=lambda: self._start_scan(False), style="Action.TButton")
         self.full_button.pack(side="left")
 
+        navigation = ttk.Frame(root, style="Surface.TFrame", padding=(10, 8))
+        navigation.pack(fill="x", pady=(0, 14))
+        for view, label in (("analysis", "New Analysis"), ("batch", "Batch Scan"), ("history", "History"), ("reports", "Reports"), ("iocs", "IOC Lists"), ("settings", "Settings")):
+            ttk.Button(navigation, text=label, command=lambda selected=view: self._show_view(selected), style="Secondary.TButton").pack(side="left", padx=(0, 8))
+
         target = ttk.Frame(root, style="Surface.TFrame", padding=(16, 12))
         target.pack(fill="x", pady=(0, 16))
         ttk.Label(target, text="TARGET", foreground=COLORS["red"], background=COLORS["surface"], font=("Segoe UI", 8, "bold")).pack(anchor="w")
@@ -104,11 +118,182 @@ class CerberusApp(tk.Tk):
         self._build_evidence()
         self._build_verdict()
 
+        self.view_widgets["analysis"] = (target, content)
+
         footer = ttk.Frame(root, style="App.TFrame")
         footer.pack(fill="x", pady=(14, 0))
         self.footer_label = ttk.Label(footer, text="Static evidence only. No behavioral execution performed.", style="Subtitle.TLabel")
         self.footer_label.pack(side="left")
         ttk.Label(footer, text="made by daniel • @shwdaniel7", style="Subtitle.TLabel").pack(side="right")
+
+        self._build_auxiliary_views(root)
+
+    def _build_auxiliary_views(self, parent):
+        self.batch_view = ttk.Frame(parent, style="Surface.TFrame", padding=18)
+        self.view_widgets["batch"] = (self.batch_view,)
+        ttk.Label(self.batch_view, text="BATCH SCAN", style="PanelTitle.TLabel").pack(anchor="w")
+        ttk.Label(self.batch_view, text="Analyze a folder with the configured analysis core.", style="Muted.TLabel").pack(anchor="w", pady=(4, 14))
+        batch_controls = ttk.Frame(self.batch_view, style="Surface.TFrame")
+        batch_controls.pack(fill="x", pady=(0, 12))
+        ttk.Button(batch_controls, text="Choose folder", command=self._choose_batch_folder, style="Action.TButton").pack(side="left")
+        self.batch_status = ttk.Label(batch_controls, text="No folder selected.", style="Muted.TLabel")
+        self.batch_status.pack(side="left", padx=12)
+        self.batch_tree = ttk.Treeview(self.batch_view, columns=("file", "status", "risk", "time", "cache"), show="headings")
+        for column, title, width in (("file", "FILE", 260), ("status", "STATUS", 100), ("risk", "RISK", 100), ("time", "TIME", 100), ("cache", "CACHE", 80)):
+            self.batch_tree.heading(column, text=title)
+            self.batch_tree.column(column, width=width, anchor="w")
+        self.batch_tree.pack(fill="both", expand=True)
+
+        self.history_view = self._simple_view(parent, "HISTORY", "Previous JSON analyses")
+        self.history_text = self.history_view[1]
+        self.view_widgets["history"] = (self.history_view[0],)
+        self.reports_view = self._simple_view(parent, "REPORTS", "Generated JSON, CSV, and HTML reports")
+        self.reports_text = self.reports_view[1]
+        self.view_widgets["reports"] = (self.reports_view[0],)
+        self.iocs_view = self._simple_view(parent, "IOC LISTS", "Local indicator list integrity")
+        self.iocs_text = self.iocs_view[1]
+        self.view_widgets["iocs"] = (self.iocs_view[0],)
+        self.settings_view = self._simple_view(parent, "SETTINGS", "Operational settings for the analysis core")
+        self.settings_text = self.settings_view[1]
+        self.view_widgets["settings"] = (self.settings_view[0],)
+        self.settings_text.configure(state="normal")
+        self.settings_text.insert("end", "Cache: enabled by default\nBatch workers: configured by the analysis profile\nVirusTotal: controlled by VT_API_KEY\n\nUse CLI flags for advanced automation settings.")
+        self.settings_text.configure(state="disabled")
+        self._show_view("analysis")
+
+    def _simple_view(self, parent, title, subtitle):
+        view = ttk.Frame(parent, style="Surface.TFrame", padding=18)
+        ttk.Label(view, text=title, style="PanelTitle.TLabel").pack(anchor="w")
+        ttk.Label(view, text=subtitle, style="Muted.TLabel").pack(anchor="w", pady=(4, 14))
+        text = tk.Text(view, background=COLORS["surface"], foreground=COLORS["text"], relief="flat", borderwidth=0, wrap="word", font=("Consolas", 9), state="disabled")
+        text.pack(fill="both", expand=True)
+        return view, text
+
+    def _show_view(self, view_name):
+        for widgets in self.view_widgets.values():
+            for widget in widgets:
+                widget.pack_forget()
+        if view_name == "analysis":
+            self.view_widgets["analysis"][0].pack(fill="x", pady=(0, 16))
+            self.view_widgets["analysis"][1].pack(fill="both", expand=True)
+        else:
+            self.view_widgets[view_name][0].pack(fill="both", expand=True)
+        self.active_view = view_name
+        if view_name == "history":
+            self._load_history()
+        elif view_name == "reports":
+            self._load_reports()
+        elif view_name == "iocs":
+            self._load_iocs()
+
+    def _write_view_text(self, text_widget, content):
+        text_widget.configure(state="normal")
+        text_widget.delete("1.0", "end")
+        text_widget.insert("end", content)
+        text_widget.configure(state="disabled")
+
+    def _load_history(self):
+        reports_dir = "reports"
+        entries = []
+        if os.path.isdir(reports_dir):
+            for filename in sorted(os.listdir(reports_dir), reverse=True):
+                if not filename.endswith(".json") or filename.startswith("batch_summary"):
+                    continue
+                try:
+                    with open(os.path.join(reports_dir, filename), encoding="utf-8") as report_file:
+                        data = json.load(report_file)
+                    risk = data.get("risk_summary", {})
+                    metadata = data.get("metadata", {})
+                    entries.append(f"{metadata.get('analysis_date', '-')}  |  {metadata.get('archive_name', filename)}  |  {risk.get('level', 'Unknown')} ({risk.get('score', '-')}/100)")
+                except (OSError, json.JSONDecodeError):
+                    continue
+        self._write_view_text(self.history_text, "\n".join(entries) if entries else "No analysis history found.")
+
+    def _load_reports(self):
+        reports_dir = "reports"
+        entries = sorted(os.listdir(reports_dir)) if os.path.isdir(reports_dir) else []
+        self._write_view_text(self.reports_text, "\n".join(entries) if entries else "No reports found.")
+
+    def _load_iocs(self):
+        details = inspect_ioc_lists()
+        lines = []
+        for name, data in details.items():
+            lines.append(f"{name}: {data['valid_count']} valid")
+            lines.append(f"  file: {data['path']}")
+            lines.append(f"  malformed: {len(data['invalid'])}")
+        self._write_view_text(self.iocs_text, "\n".join(lines))
+
+    def _choose_batch_folder(self):
+        folder = filedialog.askdirectory(title="Select a folder for batch analysis")
+        if not folder:
+            return
+        for item in self.batch_tree.get_children():
+            self.batch_tree.delete(item)
+        self.batch_status.configure(text=f"Scanning {folder}...")
+        self._set_controls(False)
+        self.analysis_thread = threading.Thread(target=self._run_batch, args=(folder,), daemon=True)
+        self.analysis_thread.start()
+
+    def _run_batch(self, folder):
+        ignored = {".git", ".venv", "__pycache__", "node_modules"}
+        asset_extensions = {".png", ".jpg", ".jpeg", ".gif", ".mp3", ".mp4", ".wav", ".woff", ".woff2"}
+        files = []
+        for root, directories, filenames in os.walk(folder):
+            directories[:] = [directory for directory in directories if directory.lower() not in ignored]
+            files.extend(os.path.join(root, name) for name in filenames)
+        files = [filepath for filepath in sorted(files) if os.path.splitext(filepath)[1].lower() not in asset_extensions]
+        config = {
+            "blacklist": True,
+            "virustotal": False,
+            "strings": True,
+            "ioc_extract": True,
+            "entropy": True,
+            "magic_numbers": True,
+            "pe_analysis": True,
+            "gerar_report": True,
+            "report_format": "json",
+            "output_dir": "reports",
+            "quiet": True,
+            "workers": min(4, max(1, os.cpu_count() or 1)),
+            "cache_enabled": True,
+            "minimum_report_score": 50,
+            "virustotal_suspicious_only": True,
+        }
+        config["_cache"] = AnalysisCache(config["output_dir"], CERBERUS_VERSION)
+        self.events.put(("batch_started", len(files)))
+        batch_started = time.perf_counter()
+        batch_results = []
+        def analyze_candidate(filepath):
+            return self.analyzer.analyze_file(filepath, config, show_details=False)
+
+        with ThreadPoolExecutor(max_workers=config["workers"]) as executor:
+            futures = {
+                executor.submit(analyze_candidate, filepath): filepath
+                for filepath in files
+            }
+            for index, future in enumerate(as_completed(futures), start=1):
+                filepath = futures[future]
+                try:
+                    result = future.result()
+                    batch_results.append(result)
+                    self.events.put(("batch_result", index, len(files), result))
+                except Exception as error:
+                    failure = {
+                        "file": os.path.basename(filepath),
+                        "path": filepath,
+                        "success": False,
+                        "error": str(error),
+                    }
+                    batch_results.append(failure)
+                    self.events.put(("batch_error", index, len(files), filepath, str(error)))
+        summary_path = save_batch_summary(
+            folder,
+            batch_results,
+            round(time.perf_counter() - batch_started, 3),
+            reports_folder=config["output_dir"],
+        )
+        self.events.put(("batch_summary", summary_path))
+        self.events.put(("batch_complete", len(files)))
 
     def _panel(self, parent, column, title):
         panel = ttk.Frame(parent, style="Panel.TFrame", padding=16)
@@ -310,7 +495,34 @@ class CerberusApp(tk.Tk):
         self.evidence_tree.insert("", "end", values=(status, engine, detail), tags=(tag,))
 
     def _handle_result_event(self, event):
-        kind, payload = event
+        kind = event[0]
+        if kind == "batch_started":
+            self.batch_status.configure(text=f"0 / {event[1]} files complete")
+            return
+        if kind == "batch_result":
+            _, index, total, result = event
+            cache_label = "HIT" if result.get("cache_hit") else "-"
+            self.batch_tree.insert("", "end", values=(result["file"], "COMPLETE", f"{result['risk_level']} ({result['risk_score']})", f"{result['analysis_duration']:.3f}s", cache_label))
+            self.batch_status.configure(text=f"{index} / {total} files complete")
+            return
+        if kind == "batch_error":
+            _, index, total, filepath, error = event
+            self.batch_tree.insert("", "end", values=(os.path.basename(filepath), "FAILED", "-", "-", error))
+            self.batch_status.configure(text=f"{index} / {total} files complete")
+            return
+        if kind == "batch_complete":
+            self.batch_status.configure(text=f"Batch complete: {event[1]} files analyzed")
+            self._set_controls(True)
+            return
+        if kind == "batch_summary":
+            self.batch_status.configure(text=f"Batch summary: {event[1]}")
+            return
+        if kind == "result":
+            payload = event[1]
+        elif kind == "error":
+            payload = event[1]
+        else:
+            return
         if kind == "error":
             self.status_label.configure(text="FAILED", foreground=COLORS["red"])
             self._set_stage("VERDICT", "FAILED")

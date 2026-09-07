@@ -61,7 +61,7 @@ CERBERUS implements interactive and automated scan profiles:
 | Quick Scan | Local blacklist, magic number header check | No report |
 | Custom Scan | User-selected combination of all available engines | Optional JSON, CSV, and HTML reports |
 | Analysis History | Lists previous JSON reports with optional name, hash, or risk-level filtering | Terminal listing |
-| Batch Scan | Full Scan applied to every file in a selected folder | Individual reports plus batch summary |
+| Batch Scan | Full Scan applied to every file in a selected folder with bounded concurrency and cache reuse | Risk-filtered JSON reports plus batch summary |
 | IOC Lists Integrity | Validates local hashes and suspicious terms, reporting valid and malformed entries | Terminal listing |
 
 The default no-argument launch opens the first Tkinter dashboard. The dashboard organizes each analysis into `IDENTITY`, `EVIDENCE`, and `VERDICT`, while CLI mode remains available for automation.
@@ -234,7 +234,7 @@ While an engine is running, the terminal displays an animated progress bar with 
 
 Interactive output includes a red CERBERUS identity banner, `[>]` engine-start states, `[OK]` completion states, and a final summary divided into `VERDICT`, `EVIDENCE`, and `IDENTITY`, with deliberate spacing between analysis blocks.
 
-Batch analysis uses configurable workers and a persistent cache keyed by file metadata, enabled engines, and analyzer version. Repeated scans can reuse previous results when the file and configuration are unchanged. When SHA-256 and entropy are both enabled, their reusable byte metrics are collected in one streaming pass.
+Batch analysis uses configurable workers and a persistent cache keyed by file metadata, enabled engines, and analyzer version. The dashboard batch uses a bounded pool of up to four workers, avoids CSV/HTML generation for every low-risk file, and writes individual JSON reports only at the configured risk threshold. Repeated scans can reuse previous results when the file and configuration are unchanged. When SHA-256 and entropy are both enabled, their reusable byte metrics are collected in one streaming pass.
 
 The analysis core emits structured `AnalysisEvent` values for file and engine lifecycle changes. Future interfaces can subscribe to these events without parsing terminal output.
 
@@ -253,6 +253,10 @@ The first interface stage also defines the visual lifecycle used by future scree
 ### Evidence exploration
 
 The Evidence panel now keeps an `Overview` tab for live engine progress and provides focused tabs for `Strings`, `IOCs`, `PE`, `Entropy`, and `Reputation` after analysis completes. These tabs distinguish observed data from contextual indicators such as high entropy or packer signatures, while preserving the main three-panel layout.
+
+### Application flows
+
+The dashboard navigation now includes `New Analysis`, `Batch Scan`, `History`, `Reports`, `IOC Lists`, and `Settings`. Batch Scan runs files in the background and reports completion, risk, duration, cache hits, and failures incrementally. History reads previous JSON summaries, Reports lists generated artifacts, and IOC Lists reuses the existing integrity checks. These are the first operational flows; deeper report comparison and filtering remain future polish.
 
 The application opens a file picker. After selecting a target file, choose one of the scan profiles:
 
