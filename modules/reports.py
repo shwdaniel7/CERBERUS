@@ -8,7 +8,7 @@ from datetime import datetime
 CERBERUS_VERSION = "1.0.0"
 
 
-def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration, iocs=None, packer_analysis=None):
+def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration, iocs=None, packer_analysis=None, pe_analysis=None):
     reports_folder = "reports"
     if not os.path.exists(reports_folder):
         os.makedirs(reports_folder)
@@ -74,6 +74,7 @@ def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, de
         static_analysis["all_strings"] = []
 
     static_analysis["ioc_extraction"] = iocs if config_choices.get("ioc_extract") else "Not executed"
+    static_analysis["pe_analysis"] = pe_analysis if config_choices.get("pe_analysis") else "Not executed"
 
     vt_match = re.search(r"Flagged by VirusTotal: (\d+)/(\d+)", result_vt or "")
     vt_indicators = int(vt_match.group(1)) if vt_match else 0

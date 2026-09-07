@@ -6,6 +6,7 @@ from tkinter.filedialog import askdirectory, askopenfilename
 from modules.strings import strings 
 from modules.ioc_extract import extract_iocs, count_iocs
 from modules.packers import detect_packers
+from modules.pe_analysis import analyze_pe
 from modules.hashes import calc_sha256, check_local_blacklist, virustotal_check
 from modules.iocs import print_ioc_integrity
 from modules.reports import list_analysis_history, save_batch_summary, save_report
@@ -54,6 +55,7 @@ def analyze_file(selected_file, config, show_details=True):
     magic_alert = None
     extracted_iocs = {}
     packer_analysis = {"detected": False, "packers": {}, "note": "Not executed"}
+    pe_analysis = {"status": "not_executed", "sections": []}
 
     if config["blacklist"] or config["virustotal"]:
         if show_details:
@@ -105,6 +107,15 @@ def analyze_file(selected_file, config, show_details=True):
             for alert in alerts:
                 print(f"  -> {paint_red(alert)}")
 
+    if config.get("pe_analysis"):
+        if show_details:
+            print(paint_cyan("\n--- Analyzing PE Sections ---"))
+        pe_analysis = analyze_pe(selected_file)
+        if show_details:
+            print(f"[->] PE analysis: {paint_yellow(pe_analysis['status'])}")
+            if pe_analysis.get("has_pe_signature"):
+                print(f"[->] Sections: {paint_yellow(pe_analysis['number_of_sections'])}")
+
     if config.get("ioc_extract"):
         if show_details:
             print(paint_cyan("\n--- Extracting URLs, IPs, Domains, E-mails and Commands ---"))
@@ -143,7 +154,8 @@ def analyze_file(selected_file, config, show_details=True):
         report_path = save_report(
             selected_file, kb_size, hash_result, result_vt, alerts, all_strings,
             in_blacklist, config, entropy_score, entropy_status, real_type,
-            magic_alert, risk, analysis_duration, extracted_iocs, packer_analysis
+            magic_alert, risk, analysis_duration, extracted_iocs, packer_analysis,
+            pe_analysis
         )
     return {
         "file": os.path.basename(selected_file),
