@@ -30,6 +30,7 @@ class CerberusApp(tk.Tk):
         self.engine_names = []
         self.completed_engines = 0
         self.last_result = None
+        self.engine_states = {}
 
         self.title("CERBERUS / Static Malware Analysis Engine")
         self.geometry("1240x780")
@@ -51,6 +52,7 @@ class CerberusApp(tk.Tk):
         style.configure("Body.TLabel", background=COLORS["surface_alt"], foreground=COLORS["text"], font=("Segoe UI", 9))
         style.configure("Muted.TLabel", background=COLORS["surface_alt"], foreground=COLORS["muted"], font=("Segoe UI", 9))
         style.configure("Metric.TLabel", background=COLORS["surface_alt"], foreground=COLORS["text"], font=("Segoe UI", 12, "bold"))
+        style.configure("Stage.TLabel", background=COLORS["surface_alt"], foreground=COLORS["muted"], font=("Segoe UI", 8, "bold"))
         style.configure("Action.TButton", background=COLORS["crimson"], foreground="white", borderwidth=0, padding=(14, 8), font=("Segoe UI", 9, "bold"))
         style.map("Action.TButton", background=[("active", COLORS["red"]), ("disabled", COLORS["border"])])
         style.configure("Secondary.TButton", background=COLORS["surface_alt"], foreground=COLORS["text"], borderwidth=1, padding=(12, 7), font=("Segoe UI", 9))
@@ -123,10 +125,21 @@ class CerberusApp(tk.Tk):
             value = ttk.Label(row, text="-", style="Body.TLabel", wraplength=260)
             value.pack(anchor="w", pady=(2, 0))
             self.identity_values[key] = value
+        self.path_label = ttk.Label(self.identity_panel, text="Path: -", style="Muted.TLabel", wraplength=260)
+        self.path_label.pack(anchor="w", pady=(12, 4))
+        self.copy_hash_button = ttk.Button(self.identity_panel, text="Copy SHA-256", command=self._copy_hash, style="Secondary.TButton")
+        self.copy_hash_button.pack(anchor="w", pady=(4, 0))
 
     def _build_evidence(self):
         self.progress_label = ttk.Label(self.evidence_panel, text="Waiting for analysis", style="Muted.TLabel")
         self.progress_label.pack(anchor="w")
+        stages = ttk.Frame(self.evidence_panel, style="Panel.TFrame")
+        stages.pack(fill="x", pady=(10, 8))
+        self.stage_labels = {}
+        for stage in ("IDENTITY", "EVIDENCE", "VERDICT"):
+            label = ttk.Label(stages, text=f"○ {stage}", style="Stage.TLabel")
+            label.pack(side="left", expand=True, anchor="w")
+            self.stage_labels[stage] = label
         self.progress = ttk.Progressbar(self.evidence_panel, style="Accent.Horizontal.TProgressbar", maximum=1, value=0)
         self.progress.pack(fill="x", pady=(8, 16))
         columns = ("status", "engine", "detail")
@@ -140,6 +153,9 @@ class CerberusApp(tk.Tk):
         self.evidence_tree.tag_configure("running", foreground=COLORS["cyan"])
         self.evidence_tree.tag_configure("completed", foreground=COLORS["green"])
         self.evidence_tree.tag_configure("warning", foreground=COLORS["yellow"])
+        self.evidence_tree.tag_configure("skipped", foreground=COLORS["muted"])
+        self.evidence_tree.tag_configure("cached", foreground=COLORS["cyan"])
+        self.evidence_tree.tag_configure("failed", foreground=COLORS["red"])
         self.evidence_tree.pack(fill="both", expand=True)
 
     def _build_verdict(self):
@@ -158,6 +174,13 @@ class CerberusApp(tk.Tk):
             self.selected_file = filepath
             self.target_label.configure(text=filepath, foreground=COLORS["text"])
             self.status_label.configure(text="READY", foreground=COLORS["green"])
+
+    def _copy_hash(self):
+        value = self.identity_values["hash"].cget("text")
+        if value and value not in ("-", "Not calculated"):
+            self.clipboard_clear()
+            self.clipboard_append(value)
+            self.status_label.configure(text="HASH COPIED", foreground=COLORS["cyan"])
 
     def _start_scan(self, quick):
         if not self.selected_file:
@@ -186,6 +209,12 @@ class CerberusApp(tk.Tk):
             "event_callback": self.events.put,
         }
         self.engine_names = self._engine_names(config)
+        self.engine_states = {name: "QUEUED" for name in self.engine_names}
+        for name in self.engine_names:
+            self._upsert_engine(name, "QUEUED", "Waiting", "skipped")
+        self._set_stage("IDENTITY", "RUNNING")
+        self._set_stage("EVIDENCE", "QUEUED")
+        self._set_stage("VERDICT", "QUEUED")
         self.progress.configure(maximum=max(1, len(self.engine_names)), value=0)
         self.analysis_thread = threading.Thread(target=self._run_analysis, args=(config,), daemon=True)
         self.analysis_thread.start()
@@ -231,16 +260,27 @@ class CerberusApp(tk.Tk):
 
     def _handle_analysis_event(self, event):
         if event.event_type == "file_completed" and event.status == "cached":
+            for engine in self.engine_names:
+                self._upsert_engine(engine, "CACHED", "Restored from cache", "cached")
+            self.completed_engines = len(self.engine_names)
+            self.progress.configure(value=self.completed_engines)
+            self._set_stage("IDENTITY", "COMPLETE")
+            self._set_stage("EVIDENCE", "COMPLETE")
+            self._set_stage("VERDICT", "COMPLETE")
             self._handle_result_event(("result", event.data))
             return
         if event.event_type == "engine_started":
+            self.engine_states[event.engine] = "RUNNING"
             self.progress_label.configure(text=f"Running: {event.engine}")
             self._upsert_engine(event.engine, "RUNNING", event.message, "running")
+            self._update_stages(event.engine)
         elif event.event_type == "engine_completed":
+            self.engine_states[event.engine] = "COMPLETE"
             self.completed_engines += 1
             self.progress.configure(value=self.completed_engines)
             self.progress_label.configure(text=f"Completed: {event.engine} ({event.elapsed_seconds:.3f}s)")
             self._upsert_engine(event.engine, "COMPLETE", f"{event.elapsed_seconds:.3f}s", "completed")
+            self._update_stages(event.engine)
 
     def _upsert_engine(self, engine, status, detail, tag):
         for item in self.evidence_tree.get_children():
@@ -254,6 +294,8 @@ class CerberusApp(tk.Tk):
         kind, payload = event
         if kind == "error":
             self.status_label.configure(text="FAILED", foreground=COLORS["red"])
+            self._set_stage("VERDICT", "FAILED")
+            self._upsert_engine("Analysis", "FAILED", str(payload), "failed")
             messagebox.showerror("Analysis failed", str(payload))
             self._set_controls(True)
             return
@@ -262,6 +304,9 @@ class CerberusApp(tk.Tk):
         self.progress.configure(value=self.progress["maximum"])
         self.progress_label.configure(text=f"Analysis complete in {payload['analysis_duration']:.3f}s")
         self._render_result(payload)
+        self._set_stage("IDENTITY", "COMPLETE")
+        self._set_stage("EVIDENCE", "COMPLETE")
+        self._set_stage("VERDICT", "COMPLETE")
         self._set_controls(True)
 
     def _render_result(self, result):
@@ -273,6 +318,7 @@ class CerberusApp(tk.Tk):
         self.identity_values["compatibility"].configure(text=file_type.get("compatibility", "-"))
         self.identity_values["hash"].configure(text=details.get("sha256", "Not calculated"), font=("Consolas", 8))
         self.identity_values["size"].configure(text=f"{details.get('size_bytes', 0)} bytes")
+        self.path_label.configure(text=f"Path: {result.get('path', '-')}")
         risk = result["risk"]
         self.risk_label.configure(text=f"{risk['level'].upper()} RISK", foreground=self._risk_color(risk["level"]))
         self.score_label.configure(text=f"{risk['score']} / 100  |  {result['analysis_duration']:.3f}s")
@@ -289,6 +335,12 @@ class CerberusApp(tk.Tk):
         self.completed_engines = 0
         self.progress.configure(value=0)
         self.progress_label.configure(text="Preparing analysis")
+        self.path_label.configure(text="Path: -")
+        for value in self.identity_values.values():
+            value.configure(text="-")
+        self._set_stage("IDENTITY", "QUEUED")
+        self._set_stage("EVIDENCE", "QUEUED")
+        self._set_stage("VERDICT", "QUEUED")
         for item in self.evidence_tree.get_children():
             self.evidence_tree.delete(item)
         self.risk_label.configure(text="ANALYZING", foreground=COLORS["cyan"])
@@ -296,6 +348,20 @@ class CerberusApp(tk.Tk):
         self.factors_text.configure(state="normal")
         self.factors_text.delete("1.0", "end")
         self.factors_text.configure(state="disabled")
+
+    def _set_stage(self, stage, state):
+        symbols = {"QUEUED": "○", "RUNNING": "●", "COMPLETE": "✓", "FAILED": "✕"}
+        colors = {"QUEUED": COLORS["muted"], "RUNNING": COLORS["cyan"], "COMPLETE": COLORS["green"], "FAILED": COLORS["red"]}
+        self.stage_labels[stage].configure(text=f"{symbols.get(state, '○')} {stage}", foreground=colors.get(state, COLORS["muted"]))
+
+    def _update_stages(self, current_engine):
+        evidence_engines = set(self.engine_names) - {"SHA-256", "Local blacklist"}
+        identity_done = all(self.engine_states.get(name) == "COMPLETE" for name in ("SHA-256", "Local blacklist") if name in self.engine_states)
+        evidence_running = current_engine in evidence_engines
+        evidence_done = evidence_engines and all(self.engine_states.get(name) == "COMPLETE" for name in evidence_engines)
+        self._set_stage("IDENTITY", "COMPLETE" if identity_done else "RUNNING")
+        self._set_stage("EVIDENCE", "COMPLETE" if evidence_done else "RUNNING" if evidence_running else "QUEUED")
+        self._set_stage("VERDICT", "QUEUED")
 
     def _set_controls(self, enabled):
         state = "normal" if enabled else "disabled"

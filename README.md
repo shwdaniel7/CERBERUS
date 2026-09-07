@@ -248,6 +248,8 @@ Running `python analyzer.py` opens the initial Tkinter dashboard. Its layout fol
 
 The dashboard runs analysis in a background thread so the window remains responsive. It is a first functional interface; batch controls, history navigation, and richer report exploration remain future interface work. CLI mode is unchanged for scripts and automation.
 
+The first interface stage also defines the visual lifecycle used by future screens: `QUEUED`, `RUNNING`, `COMPLETE`, `SKIPPED`, `FAILED`, and `CACHED`. The three-stage indicator follows `IDENTITY -> EVIDENCE -> VERDICT`, while the identity panel exposes the full path and a copy action for SHA-256.
+
 The application opens a file picker. After selecting a target file, choose one of the scan profiles:
 
 ```text
