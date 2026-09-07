@@ -16,10 +16,17 @@ def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert,
         score += 40
         factors.append("Hash found in local blacklist (+40)")
 
-    vt_match = re.search(r"Flagged by VirusTotal: (\d+)/(\d+)", result_vt or "")
-    if vt_match:
-        malicious_count = int(vt_match.group(1))
-        total_engines = int(vt_match.group(2))
+    if isinstance(result_vt, dict):
+        malicious_count = int(result_vt.get("malicious", 0))
+        total_engines = sum(
+            int(result_vt.get(category, 0))
+            for category in ("malicious", "suspicious", "harmless", "undetected")
+        )
+    else:
+        vt_match = re.search(r"Flagged by VirusTotal: (\d+)/(\d+)", result_vt or "")
+        malicious_count = int(vt_match.group(1)) if vt_match else 0
+        total_engines = int(vt_match.group(2)) if vt_match else 0
+    if malicious_count or total_engines:
         if malicious_count and total_engines:
             virus_total_points = round(min(35, malicious_count / total_engines * 35))
             score += virus_total_points

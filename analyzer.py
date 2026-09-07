@@ -7,7 +7,7 @@ from modules.strings import strings
 from modules.ioc_extract import extract_iocs, count_iocs
 from modules.packers import detect_packers
 from modules.pe_analysis import analyze_pe
-from modules.hashes import calc_sha256, check_local_blacklist, virustotal_check
+from modules.hashes import calc_sha256, check_local_blacklist, virustotal_available, virustotal_check
 from modules.iocs import print_ioc_integrity
 from modules.reports import list_analysis_history, save_batch_summary, save_report
 from modules.risk import calculate_risk
@@ -46,13 +46,20 @@ def analyze_file(selected_file, config, show_details=True):
     analysis_start = time.perf_counter()
     hash_result = None
     in_blacklist = None
-    result_vt = "Not selected in the configuration."
+    result_vt = {"status": "not_selected", "message": "VirusTotal not selected in the configuration."}
     all_strings = []
     alerts = []
     entropy_score = 0.0
     entropy_status = "Not executed"
     real_type = "Not executed"
     magic_alert = None
+    file_type_analysis = {
+        "declared_extension": os.path.splitext(selected_file)[1].lower() or "(none)",
+        "detected_type": "Not executed",
+        "compatibility": "Not executed",
+        "compatible": None,
+        "alert": None,
+    }
     extracted_iocs = {}
     packer_analysis = {"detected": False, "packers": {}, "note": "Not executed"}
     pe_analysis = {"status": "not_executed", "sections": []}
@@ -77,10 +84,15 @@ def analyze_file(selected_file, config, show_details=True):
     if config["magic_numbers"]:
         if show_details:
             print(paint_cyan("\n--- Consulting Magic Signature ---"))
-        from modules.magic_numbers import check_magic_number
-        real_type, magic_alert = check_magic_number(selected_file)
+        from modules.magic_numbers import analyze_file_type
+        file_type_analysis = analyze_file_type(selected_file)
+        real_type = file_type_analysis["detected_type"]
+        magic_alert = file_type_analysis["alert"]
         if show_details:
-            print(f"[+] Real Type Detected: {paint_yellow(real_type)}")
+            print(f"[+] Declared Extension: {paint_yellow(file_type_analysis['declared_extension'])}")
+            print(f"[+] Detected Type: {paint_yellow(real_type)}")
+            compatibility_color = paint_green if file_type_analysis["compatibility"] == "Compatible" else paint_yellow
+            print(f"[+] Compatibility: {compatibility_color(file_type_analysis['compatibility'])}")
             if magic_alert:
                 print(paint_red(magic_alert))
 
@@ -132,7 +144,7 @@ def analyze_file(selected_file, config, show_details=True):
         or magic_alert
         or any(extracted_iocs.get(category) for category in ("suspicious_paths", "powershell_commands", "cmd_commands"))
     )
-    should_query_virustotal = config["virustotal"] and (
+    should_query_virustotal = config["virustotal"] and virustotal_available() and (
         not config.get("virustotal_suspicious_only") or suspicious_locally
     )
     if should_query_virustotal:
@@ -140,10 +152,17 @@ def analyze_file(selected_file, config, show_details=True):
             print(paint_cyan("\n--- Consulting VirusTotal API ---"))
         result_vt = virustotal_check(hash_result)
         if show_details:
-            output_color = paint_red if "Flagged" in result_vt or "429" in result_vt else paint_green
-            print(f"[->] {output_color(result_vt)}")
+            output_color = (
+                paint_red
+                if result_vt.get("malicious", 0) or result_vt.get("status") == "rate_limited"
+                else paint_yellow if result_vt.get("status") == "suspicious" else paint_green
+            )
+            print(f"[->] {output_color(result_vt['message'])}")
     elif config["virustotal"]:
-        result_vt = "VirusTotal: Skipped because no local indicators were found."
+        if virustotal_available():
+            result_vt = {"status": "skipped", "message": "VirusTotal: skipped because no local indicators were found."}
+        else:
+            result_vt = {"status": "not_configured", "message": "VirusTotal: API key not configured; request not sent."}
 
     risk = calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, extracted_iocs)
     analysis_duration = round(time.perf_counter() - analysis_start, 3)
@@ -155,7 +174,7 @@ def analyze_file(selected_file, config, show_details=True):
             selected_file, kb_size, hash_result, result_vt, alerts, all_strings,
             in_blacklist, config, entropy_score, entropy_status, real_type,
             magic_alert, risk, analysis_duration, extracted_iocs, packer_analysis,
-            pe_analysis
+            pe_analysis, file_type_analysis
         )
     return {
         "file": os.path.basename(selected_file),

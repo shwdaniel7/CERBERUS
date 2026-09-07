@@ -8,7 +8,7 @@ from datetime import datetime
 CERBERUS_VERSION = "1.0.0"
 
 
-def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration, iocs=None, packer_analysis=None, pe_analysis=None):
+def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration, iocs=None, packer_analysis=None, pe_analysis=None, file_type_analysis=None):
     reports_folder = "reports"
     if not os.path.exists(reports_folder):
         os.makedirs(reports_folder)
@@ -36,7 +36,7 @@ def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, de
         report_data["signatures"] = "Not executed"
 
     if config_choices["virustotal"]:
-        report_data["virustotal_analysis"] = {"virustotal": result_vt}
+        report_data["virustotal_analysis"] = result_vt
     else:
         report_data["virustotal_analysis"] = "Not executed"
 
@@ -57,9 +57,12 @@ def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, de
         static_analysis["entropy_analysis"] = "Not executed"
 
     if config_choices["magic_numbers"]:
-        static_analysis["magic_number_analysis"] = {
+        static_analysis["magic_number_analysis"] = file_type_analysis or {
+            "declared_extension": "(unknown)",
             "detected_type": real_type,
-            "masquerade_alert": magic_alert if magic_alert else "None (Extension matches header)"
+            "compatibility": "Unknown",
+            "compatible": None,
+            "alert": magic_alert,
         }
     else:
         static_analysis["magic_number_analysis"] = "Not executed"
@@ -76,8 +79,11 @@ def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, de
     static_analysis["ioc_extraction"] = iocs if config_choices.get("ioc_extract") else "Not executed"
     static_analysis["pe_analysis"] = pe_analysis if config_choices.get("pe_analysis") else "Not executed"
 
-    vt_match = re.search(r"Flagged by VirusTotal: (\d+)/(\d+)", result_vt or "")
-    vt_indicators = int(vt_match.group(1)) if vt_match else 0
+    if isinstance(result_vt, dict):
+        vt_indicators = int(result_vt.get("malicious", 0))
+    else:
+        vt_match = re.search(r"Flagged by VirusTotal: (\d+)/(\d+)", result_vt or "")
+        vt_indicators = int(vt_match.group(1)) if vt_match else 0
     extracted_ioc_count = sum(len(values) for values in iocs.values()) if iocs else 0
     indicator_count = len(alerts) + int(bool(detected_bl)) + int(bool(magic_alert)) + vt_indicators + extracted_ioc_count
     if "INDICATOR" in (entropy_status or ""):
@@ -118,6 +124,10 @@ def save_csv_report(report_data, reports_folder, base_name, short_hash):
         "detected_type": statistics["magic_number_analysis"].get("detected_type", "") if isinstance(statistics["magic_number_analysis"], dict) else "",
         "entropy_score": statistics["entropy_analysis"].get("score", "") if isinstance(statistics["entropy_analysis"], dict) else "",
         "string_alert_count": statistics["total_alerts"] if isinstance(statistics["total_alerts"], int) else 0,
+        "vt_malicious": report_data["virustotal_analysis"].get("malicious", 0) if isinstance(report_data["virustotal_analysis"], dict) else 0,
+        "vt_suspicious": report_data["virustotal_analysis"].get("suspicious", 0) if isinstance(report_data["virustotal_analysis"], dict) else 0,
+        "vt_harmless": report_data["virustotal_analysis"].get("harmless", 0) if isinstance(report_data["virustotal_analysis"], dict) else 0,
+        "vt_undetected": report_data["virustotal_analysis"].get("undetected", 0) if isinstance(report_data["virustotal_analysis"], dict) else 0,
         "analysis_duration_seconds": metadata["analysis_duration_seconds"],
     }
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as csv_file:
