@@ -24,6 +24,11 @@ def optionsMenu():
         "report_format": "all",
         "output_dir": "reports",
         "quiet": False,
+        "workers": 1,
+        "cache_enabled": True,
+        "max_file_size": None,
+                "workers": 4,
+                "cache_enabled": True,
     }
     
     while True:

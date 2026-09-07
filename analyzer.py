@@ -1,4 +1,5 @@
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import sys
 import threading
@@ -13,6 +14,10 @@ from modules.iocs import print_ioc_integrity
 from modules.reports import list_analysis_history, save_batch_summary, save_report
 from modules.risk import calculate_risk
 from modules.menu import optionsMenu
+from modules.analysis_cache import AnalysisCache
+from modules.analysis_events import AnalysisEvent, emit_event
+from modules.file_metrics import collect_file_metrics
+from modules.reports import CERBERUS_VERSION
 from modules.colors import (
     paint_red, paint_green, paint_yellow, paint_cyan, paint_bold,
     paint_blue, paint_dim, paint_magenta,
@@ -143,6 +148,24 @@ def print_section(title):
 
 def analyze_file(selected_file, config, show_details=True):
     byte_size = os.path.getsize(selected_file)
+    max_file_size = config.get("max_file_size")
+    if max_file_size and byte_size > max_file_size:
+        raise ValueError(
+            f"File exceeds configured limit ({byte_size} > {max_file_size} bytes)"
+        )
+
+    cache = config.get("_cache")
+    if cache is None and config.get("cache_enabled", True):
+        cache = AnalysisCache(config.get("output_dir", "reports"), CERBERUS_VERSION)
+        config["_cache"] = cache
+    if cache:
+        cached_result = cache.get(selected_file, config)
+        if cached_result and (not cached_result.get("report") or os.path.exists(cached_result["report"])):
+            emit_event(config, AnalysisEvent(
+                "file_completed", selected_file, status="cached", progress=1.0,
+                message="Analysis restored from cache.", data=cached_result,
+            ))
+            return cached_result
     kb_size = byte_size / 1024
     if show_details:
         print_section("Target")
@@ -170,6 +193,7 @@ def analyze_file(selected_file, config, show_details=True):
     extracted_iocs = {}
     packer_analysis = {"detected": False, "packers": {}, "note": "Not executed"}
     pe_analysis = {"status": "not_executed", "sections": []}
+    shared_metrics = None
 
     engine_times = {}
     enabled_engines = sum((
@@ -180,7 +204,7 @@ def analyze_file(selected_file, config, show_details=True):
         bool(config["strings"]),
         bool(config.get("pe_analysis")),
         bool(config.get("ioc_extract")),
-        bool(config["virustotal"] and virustotal_available()),
+        bool(config["virustotal"]),
     ))
     progress = ProgressTracker(
         enabled_engines,
@@ -189,19 +213,31 @@ def analyze_file(selected_file, config, show_details=True):
 
     def engine_start(name):
         progress.start_engine(name)
+        emit_event(config, AnalysisEvent(
+            "engine_started", selected_file, engine=name, status="running",
+            message=f"Started {name}.",
+        ))
         return time.perf_counter()
 
     def engine_done(name, started):
         duration = round(time.perf_counter() - started, 3)
         engine_times[name] = duration
         progress.finish_engine()
+        emit_event(config, AnalysisEvent(
+            "engine_completed", selected_file, engine=name, status="completed",
+            elapsed_seconds=duration, message=f"Completed {name}.",
+        ))
 
     if config["blacklist"] or config["virustotal"]:
         engine_started = engine_start("SHA-256")
         if show_details:
             print_section("Identity")
             print(paint_dim("  Generating SHA-256 signature"))
-        hash_result = calc_sha256(selected_file)
+        if config["entropy"]:
+            shared_metrics = collect_file_metrics(selected_file)
+            hash_result = shared_metrics["sha256"]
+        else:
+            hash_result = calc_sha256(selected_file)
         if show_details:
             print(f"[+] SHA256: {paint_yellow(hash_result)}")
         engine_done("SHA-256", engine_started)
@@ -242,7 +278,9 @@ def analyze_file(selected_file, config, show_details=True):
         if show_details:
             print_section("Entropy and Packers")
         from modules.entropy import calculate_entropy
-        entropy_score, entropy_status = calculate_entropy(selected_file, packer_analysis)
+        entropy_score, entropy_status = calculate_entropy(
+            selected_file, packer_analysis, metrics=shared_metrics
+        )
         if show_details:
             print(f"[+] Shannon Entropy Score: {paint_yellow(f'{entropy_score}/8.0')}")
             status_color = paint_yellow if "INDICATOR" in entropy_status else paint_green
@@ -333,7 +371,7 @@ def analyze_file(selected_file, config, show_details=True):
             magic_alert, risk, analysis_duration, extracted_iocs, packer_analysis,
             pe_analysis, file_type_analysis, engine_times=engine_times
         )
-    return {
+    result = {
         "file": os.path.basename(selected_file),
         "path": selected_file,
         "success": True,
@@ -345,6 +383,13 @@ def analyze_file(selected_file, config, show_details=True):
         "report": report_path,
         "report_generated": should_generate_report,
     }
+    emit_event(config, AnalysisEvent(
+        "file_completed", selected_file, status="completed", progress=1.0,
+        elapsed_seconds=analysis_duration, data=result,
+    ))
+    if cache:
+        cache.put(selected_file, config, result)
+    return result
 
 
 def analyze_folder(folder_path, config):
@@ -380,23 +425,34 @@ def analyze_folder(folder_path, config):
     )
     batch_start = time.perf_counter()
     results = []
-    for index, filepath in enumerate(candidate_files, start=1):
-        print(paint_cyan(f"\n[{index}/{len(candidate_files)}] ") + paint_bold(os.path.basename(filepath)))
-        try:
-            result = analyze_file(filepath, config, show_details=not config.get("quiet", False))
-            results.append(result)
-            report_status = "report generated" if result["report_generated"] else "report skipped"
-            score_label = f"({result['risk_score']}/100)"
-            duration_label = f"{result['analysis_duration']:.3f}s"
-            print(
-                f"  {paint_dim('Risk')} {paint_bold(result['risk_level'])} "
-                f"{paint_dim(score_label)}"
-                f"  {paint_dim('Time')} {paint_yellow(duration_label)}"
-                f"  {paint_dim(report_status)}"
-            )
-        except (OSError, ValueError) as error:
-            results.append({"file": os.path.basename(filepath), "path": filepath, "success": False, "error": str(error)})
-            print(paint_red(f"[-] Analysis failed: {error}"))
+    if config.get("cache_enabled", True) and not config.get("_cache"):
+        config["_cache"] = AnalysisCache(config.get("output_dir", "reports"), CERBERUS_VERSION)
+    worker_count = max(1, min(int(config.get("workers", 1)), len(candidate_files) or 1))
+
+    def analyze_candidate(filepath):
+        return analyze_file(filepath, config, show_details=False)
+
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {executor.submit(analyze_candidate, filepath): filepath for filepath in candidate_files}
+        for index, future in enumerate(as_completed(futures), start=1):
+            filepath = futures[future]
+            print(paint_cyan(f"\n[{index}/{len(candidate_files)}] ") + paint_bold(os.path.basename(filepath)))
+            try:
+                result = future.result()
+                results.append(result)
+                report_status = "report generated" if result["report_generated"] else "report skipped"
+                cache_status = " / cached" if result.get("cache_hit") else ""
+                score_label = f"({result['risk_score']}/100)"
+                duration_label = f"{result['analysis_duration']:.3f}s"
+                print(
+                    f"  {paint_dim('Risk')} {paint_bold(result['risk_level'])} "
+                    f"{paint_dim(score_label)}"
+                    f"  {paint_dim('Time')} {paint_yellow(duration_label)}"
+                    f"  {paint_dim(report_status + cache_status)}"
+                )
+            except (OSError, ValueError) as error:
+                results.append({"file": os.path.basename(filepath), "path": filepath, "success": False, "error": str(error)})
+                print(paint_red(f"[-] Analysis failed: {error}"))
 
     duration = round(time.perf_counter() - batch_start, 3)
     summary_path = save_batch_summary(folder_path, results, duration, reports_folder=config.get("output_dir", "reports"), skipped=skipped)
@@ -414,6 +470,9 @@ def build_cli_parser():
     parser.add_argument("--report", choices=("all", "json", "csv", "html"), default="all", help="report format")
     parser.add_argument("--output", default="reports", help="report output directory")
     parser.add_argument("--quiet", action="store_true", help="suppress progress and detailed output")
+    parser.add_argument("--workers", type=int, default=1, help="parallel workers for batch mode")
+    parser.add_argument("--no-cache", action="store_true", help="disable the persistent analysis cache")
+    parser.add_argument("--max-file-size", type=int, help="skip files larger than this many bytes")
     return parser
 
 
@@ -431,6 +490,9 @@ def cli_config(args):
         "report_format": args.report,
         "output_dir": args.output,
         "quiet": args.quiet,
+        "workers": max(1, args.workers),
+        "cache_enabled": not args.no_cache,
+        "max_file_size": args.max_file_size,
         "virustotal_suspicious_only": False,
     }
 
@@ -516,4 +578,5 @@ def main():
     print_watermark()
 
 
-main()
+if __name__ == "__main__":
+    main()
