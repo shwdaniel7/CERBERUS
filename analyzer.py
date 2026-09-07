@@ -13,7 +13,10 @@ from modules.iocs import print_ioc_integrity
 from modules.reports import list_analysis_history, save_batch_summary, save_report
 from modules.risk import calculate_risk
 from modules.menu import optionsMenu
-from modules.colors import paint_red, paint_green, paint_yellow, paint_cyan, paint_bold
+from modules.colors import (
+    paint_red, paint_green, paint_yellow, paint_cyan, paint_bold,
+    paint_blue, paint_dim, paint_magenta,
+)
 
 BATCH_ASSET_EXTENSIONS = {
     ".apng", ".avi", ".bmp", ".css", ".eot", ".flac", ".gif", ".ico",
@@ -52,7 +55,7 @@ class ProgressTracker:
             self._frame += 1
         percent = min(100, int(completed / self.total * 100))
         filled = int(percent / 5)
-        bar = "#" * filled + "." * (20 - filled)
+        bar = paint_blue("#" * filled) + paint_dim("." * (20 - filled))
         elapsed = time.perf_counter() - self.analysis_started
         current_elapsed = elapsed if current_started is None else time.perf_counter() - current_started
         if final:
@@ -60,8 +63,10 @@ class ProgressTracker:
         else:
             marker = self.SPINNER[frame % len(self.SPINNER)]
         line = (
-            f"\r[{bar}] {percent:3d}% | {marker} {current_engine}"
-            f" | engine: {current_elapsed:.1f}s | total: {elapsed:.1f}s"
+            f"\r{paint_cyan('[' + bar + ']')} {paint_bold(f'{percent:3d}%')}"
+            f" | {paint_magenta(marker)} {paint_bold(current_engine)}"
+            f" | engine: {paint_yellow(f'{current_elapsed:.1f}s')}"
+            f" | total: {paint_dim(f'{elapsed:.1f}s')}"
         )
         sys.stdout.write(line + ("\n" if final else ""))
         sys.stdout.flush()
@@ -77,6 +82,7 @@ class ProgressTracker:
             self.current_engine = name
             self.current_started = time.perf_counter()
         if self.enabled:
+            print("\n" + paint_blue(f"[>] Starting {name}"))
             self._stop_event.clear()
             self._thread = threading.Thread(target=self._animate, daemon=True)
             self._thread.start()
@@ -95,6 +101,7 @@ class ProgressTracker:
         self._render()
         if self.enabled:
             sys.stdout.write("\n")
+            sys.stdout.write(paint_green(f"[OK] {self.current_engine} completed\n\n"))
             sys.stdout.flush()
         return round(duration, 3)
 
@@ -116,12 +123,32 @@ def upload_folder():
     return askdirectory(title="Select a folder to analyze", initialdir="C:/")
 
 
+def print_banner():
+    frame = paint_red
+    print(frame("\n+--------------------------------------------------+"))
+    print(frame("| ") + paint_red(paint_bold("CERBERUS")) + paint_dim("  /  STATIC MALWARE ANALYSIS ENGINE") + frame(" |"))
+    print(frame("| ") + paint_dim("Three heads. One purpose. Nothing gets past.") + frame("     |"))
+    print(frame("+--------------------------------------------------+"))
+    print()
+
+
+def print_watermark():
+    print(paint_dim("\n                         made by daniel • @shwdaniel7"))
+
+
+def print_section(title):
+    print(paint_red(f"\n[ {title.upper()} ]") + paint_dim(" " + "-" * max(2, 42 - len(title))))
+    print()
+
+
 def analyze_file(selected_file, config, show_details=True):
     byte_size = os.path.getsize(selected_file)
     kb_size = byte_size / 1024
     if show_details:
-        print(f"\n[+] File: {paint_bold(selected_file)}")
-        print(f"[+] Size: {paint_yellow(f'{kb_size:.2f} KB')}")
+        print_section("Target")
+        print(f"  {paint_dim('File')}  {paint_bold(selected_file)}")
+        print(f"  {paint_dim('Size')}  {paint_yellow(f'{kb_size:.2f} KB')}")
+        print()
 
     analysis_start = time.perf_counter()
     hash_result = None
@@ -172,7 +199,8 @@ def analyze_file(selected_file, config, show_details=True):
     if config["blacklist"] or config["virustotal"]:
         engine_started = engine_start("SHA-256")
         if show_details:
-            print(paint_cyan("\n--- Generating a File Signature ---"))
+            print_section("Identity")
+            print(paint_dim("  Generating SHA-256 signature"))
         hash_result = calc_sha256(selected_file)
         if show_details:
             print(f"[+] SHA256: {paint_yellow(hash_result)}")
@@ -181,7 +209,7 @@ def analyze_file(selected_file, config, show_details=True):
     if config["blacklist"]:
         engine_started = engine_start("Local blacklist")
         if show_details:
-            print(paint_cyan("\n--- Consulting Local Blacklist ---"))
+            print_section("Reputation")
         in_blacklist = check_local_blacklist(hash_result)
         if show_details:
             if in_blacklist:
@@ -193,7 +221,7 @@ def analyze_file(selected_file, config, show_details=True):
     if config["magic_numbers"]:
         engine_started = engine_start("File type and magic numbers")
         if show_details:
-            print(paint_cyan("\n--- Consulting Magic Signature ---"))
+            print_section("File Type")
         from modules.magic_numbers import analyze_file_type
         file_type_analysis = analyze_file_type(selected_file)
         real_type = file_type_analysis["detected_type"]
@@ -205,13 +233,14 @@ def analyze_file(selected_file, config, show_details=True):
             print(f"[+] Compatibility: {compatibility_color(file_type_analysis['compatibility'])}")
             if magic_alert:
                 print(paint_red(magic_alert))
+            print()
         engine_done("File type and magic numbers", engine_started)
 
     if config["entropy"]:
         engine_started = engine_start("Entropy and packers")
         packer_analysis = detect_packers(selected_file)
         if show_details:
-            print(paint_cyan("\n--- Calculating Shannon Entropy ---"))
+            print_section("Entropy and Packers")
         from modules.entropy import calculate_entropy
         entropy_score, entropy_status = calculate_entropy(selected_file, packer_analysis)
         if show_details:
@@ -220,41 +249,45 @@ def analyze_file(selected_file, config, show_details=True):
             print(f"[->] Status: {status_color(entropy_status)}")
             if packer_analysis["detected"]:
                 print(f"[->] Packer context: {paint_yellow(', '.join(packer_analysis['packers']))}")
+            print()
         engine_done("Entropy and packers", engine_started)
 
     if config["strings"]:
         engine_started = engine_start("Strings")
         if show_details:
-            print(paint_cyan("\n--- Consulting File Strings ---"))
+            print_section("Embedded Strings")
         all_strings, alerts = strings(selected_file)
         if show_details:
             print(f"Total of strings: {paint_yellow(len(all_strings))}")
             print(f"Alerts found: {paint_red(len(alerts)) if alerts else paint_green('0')}")
             for alert in alerts:
                 print(f"  -> {paint_red(alert)}")
+            print()
         engine_done("Strings", engine_started)
 
     if config.get("pe_analysis"):
         engine_started = engine_start("PE sections")
         if show_details:
-            print(paint_cyan("\n--- Analyzing PE Sections ---"))
+            print_section("PE Structure")
         pe_analysis = analyze_pe(selected_file)
         if show_details:
             print(f"[->] PE analysis: {paint_yellow(pe_analysis['status'])}")
             if pe_analysis.get("has_pe_signature"):
                 print(f"[->] Sections: {paint_yellow(pe_analysis['number_of_sections'])}")
+            print()
         engine_done("PE sections", engine_started)
 
     if config.get("ioc_extract"):
         engine_started = engine_start("IOC extraction")
         if show_details:
-            print(paint_cyan("\n--- Extracting URLs, IPs, Domains, E-mails and Commands ---"))
+            print_section("Structured IOCs")
         extracted_iocs = extract_iocs(selected_file)
         if show_details:
             print(f"Extracted IOC values: {paint_yellow(count_iocs(extracted_iocs))}")
             for category, values in extracted_iocs.items():
                 if values:
                     print(f"  -> {category}: {paint_yellow(len(values))}")
+            print()
             engine_done("IOC extraction", engine_started)
 
     suspicious_locally = bool(
@@ -269,7 +302,7 @@ def analyze_file(selected_file, config, show_details=True):
     if should_query_virustotal:
         engine_started = engine_start("VirusTotal")
         if show_details:
-            print(paint_cyan("\n--- Consulting VirusTotal API ---"))
+            print_section("VirusTotal")
         result_vt = virustotal_check(hash_result)
         if show_details:
             output_color = (
@@ -280,10 +313,12 @@ def analyze_file(selected_file, config, show_details=True):
             print(f"[->] {output_color(result_vt['message'])}")
         engine_done("VirusTotal", engine_started)
     elif config["virustotal"]:
+        engine_started = engine_start("VirusTotal (skipped)")
         if virustotal_available():
             result_vt = {"status": "skipped", "message": "VirusTotal: skipped because no local indicators were found."}
         else:
             result_vt = {"status": "not_configured", "message": "VirusTotal: API key not configured; request not sent."}
+        engine_done("VirusTotal (skipped)", engine_started)
 
     risk = calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, extracted_iocs)
     analysis_duration = round(time.perf_counter() - analysis_start, 3)
@@ -338,19 +373,27 @@ def analyze_folder(folder_path, config):
         else:
             candidate_files.append(filepath)
 
-    print(paint_cyan(
-        f"\n--- Batch Analysis: {len(candidate_files)} candidate file(s) "
-        f"({len(skipped)} asset(s) skipped) ---"
-    ))
+    print_section("Batch Analysis")
+    print(
+        f"  {paint_dim('Candidates')} {paint_bold(len(candidate_files))}"
+        f"   {paint_dim('Skipped assets')} {paint_yellow(len(skipped))}"
+    )
     batch_start = time.perf_counter()
     results = []
     for index, filepath in enumerate(candidate_files, start=1):
-        print(paint_cyan(f"\n[{index}/{len(candidate_files)}] Analyzing {filepath}"))
+        print(paint_cyan(f"\n[{index}/{len(candidate_files)}] ") + paint_bold(os.path.basename(filepath)))
         try:
             result = analyze_file(filepath, config, show_details=not config.get("quiet", False))
             results.append(result)
             report_status = "report generated" if result["report_generated"] else "report skipped"
-            print(f"[+] Risk: {result['risk_level']} ({result['risk_score']}/100) - {report_status}")
+            score_label = f"({result['risk_score']}/100)"
+            duration_label = f"{result['analysis_duration']:.3f}s"
+            print(
+                f"  {paint_dim('Risk')} {paint_bold(result['risk_level'])} "
+                f"{paint_dim(score_label)}"
+                f"  {paint_dim('Time')} {paint_yellow(duration_label)}"
+                f"  {paint_dim(report_status)}"
+            )
         except (OSError, ValueError) as error:
             results.append({"file": os.path.basename(filepath), "path": filepath, "success": False, "error": str(error)})
             print(paint_red(f"[-] Analysis failed: {error}"))
@@ -398,15 +441,20 @@ def print_result_summary(result, config):
         return
     risk = result["risk"]
     risk_color = paint_red if risk["score"] >= 50 else paint_yellow if risk["score"] >= 20 else paint_green
-    print(paint_cyan("\n--- Risk Summary ---"))
+    print_section("Analysis Complete")
     risk_label = f"{risk['level']} ({risk['score']}/100)"
-    print(f"[!] Risk: {risk_color(risk_label)}")
-    print("[+] Factors:")
+    indicator_count = 0 if risk["factors"] == ["No risk indicators were detected"] else len(risk["factors"])
+    print(paint_red("  [VERDICT]"))
+    print(f"  {paint_dim('Risk')}       {risk_color(risk_label)}")
+    print(f"  {paint_dim('Indicators')} {paint_yellow(indicator_count)}")
+    duration_label = f"{result['analysis_duration']:.3f}s"
+    print(f"  {paint_dim('Duration')}   {paint_yellow(duration_label)}")
+    print(paint_red("\n  [EVIDENCE]"))
     for factor in risk["factors"]:
-        print(f"  -> {factor}")
-    print(f"[+] Total execution time: {result['analysis_duration']:.3f}s")
+        print(f"    {paint_dim('>')} {factor}")
     if result.get("report"):
-        print(paint_green(f"[+] Report generated at: {result['report']}"))
+        print(paint_red("\n  [IDENTITY]"))
+        print(f"  {paint_dim('Report')} {paint_green(result['report'])}")
 
 
 def main():
@@ -416,13 +464,15 @@ def main():
         if not args.file:
             parser.error("a file path is required in CLI mode")
         config = cli_config(args)
+        if not args.quiet:
+            print_banner()
         result = analyze_file(args.file, config, show_details=not args.quiet)
         print_result_summary(result, config)
+        if not args.quiet:
+            print_watermark()
         return
 
-    print(paint_cyan("\n======================================="))
-    print(paint_bold("          CERBERUS"))
-    print(paint_cyan("======================================="))
+    print_banner()
 
     config = optionsMenu()
 
@@ -462,6 +512,8 @@ def main():
             print(paint_green(f"[+] HTML report generated at: {report_base}.html"))
     else:
         print(paint_yellow("\n[+] Analysis completed without generating a report."))
+
+    print_watermark()
 
 
 main()

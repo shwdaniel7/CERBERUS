@@ -1,16 +1,16 @@
-from modules.colors import paint_cyan, paint_bold, paint_yellow
+from modules.colors import paint_red, paint_bold, paint_yellow
 
 def optionsMenu():
-    print(paint_cyan("\n======================================="))
-    print(paint_bold("          CERBERUS MENU"))
-    print(paint_cyan("======================================="))
+    print(paint_red("\n======================================="))
+    print(paint_red(paint_bold("          CERBERUS MENU")))
+    print(paint_red("======================================="))
     print(f"  {paint_yellow('1')} - Full Scan (All checks + Report)")
     print(f"  {paint_yellow('2')} - Quick Scan (Local Blacklist + Header)")
     print(f"  {paint_yellow('3')} - Custom Scan (Choose your options)")
     print(f"  {paint_yellow('4')} - Analysis History")
     print(f"  {paint_yellow('5')} - Batch Scan (Full Scan on a folder)")
     print(f"  {paint_yellow('6')} - IOC Lists Integrity")
-    print(paint_cyan("======================================="))
+    print(paint_red("======================================="))
     
     config = {
         "blacklist": False,

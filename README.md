@@ -8,9 +8,9 @@
 
 <h1 align="center">CERBERUS</h1>
 
-<p align="center"><strong>Static Malware Analysis Toolkit</strong></p>
+<p align="center"><strong>STATIC MALWARE ANALYSIS ENGINE</strong></p>
 
-<p align="center">Inspect suspicious files before execution using modern static analysis techniques.</p>
+<p align="center"><em>Three heads. One purpose. Nothing gets past.</em></p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11-blue?style=for-the-badge" alt="Python" />
@@ -27,7 +27,7 @@
   <a href="https://github.com/shwdaniel7/CERBERUS"><img src="https://img.shields.io/github/repo-size/shwdaniel7/CERBERUS?style=for-the-badge" alt="Repository Size" /></a>
 </p>
 
-<p align="center">made by daniel • @shwdaniel7</p>
+<p align="center"><sub><em>made by daniel • @shwdaniel7</em></sub></p>
 
 ---
 
@@ -217,6 +217,8 @@ CLI options:
 Without a file argument, CERBERUS retains the interactive menu and graphical file selector. During normal analysis and batch scans, each enabled engine reports its execution time and the final result includes total duration.
 
 While an engine is running, the terminal displays an animated progress bar with the completed percentage, spinner, active engine, engine elapsed time, and total elapsed time. Batch scans retain the per-file progress line and show the same engine-level bar for every selected file. Use `--quiet` to disable animation for log-friendly automation.
+
+Interactive output includes a red CERBERUS identity banner, `[>]` engine-start states, `[OK]` completion states, and a final summary divided into `VERDICT`, `EVIDENCE`, and `IDENTITY`, with deliberate spacing between analysis blocks.
 
 The application opens a file picker. After selecting a target file, choose one of the scan profiles:
 
