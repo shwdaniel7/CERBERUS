@@ -5,6 +5,7 @@ from tkinter.filedialog import askdirectory, askopenfilename
 
 from modules.strings import strings 
 from modules.ioc_extract import extract_iocs, count_iocs
+from modules.packers import detect_packers
 from modules.hashes import calc_sha256, check_local_blacklist, virustotal_check
 from modules.iocs import print_ioc_integrity
 from modules.reports import list_analysis_history, save_batch_summary, save_report
@@ -52,6 +53,7 @@ def analyze_file(selected_file, config, show_details=True):
     real_type = "Not executed"
     magic_alert = None
     extracted_iocs = {}
+    packer_analysis = {"detected": False, "packers": {}, "note": "Not executed"}
 
     if config["blacklist"] or config["virustotal"]:
         if show_details:
@@ -81,14 +83,17 @@ def analyze_file(selected_file, config, show_details=True):
                 print(paint_red(magic_alert))
 
     if config["entropy"]:
+        packer_analysis = detect_packers(selected_file)
         if show_details:
             print(paint_cyan("\n--- Calculating Shannon Entropy ---"))
         from modules.entropy import calculate_entropy
-        entropy_score, entropy_status = calculate_entropy(selected_file)
+        entropy_score, entropy_status = calculate_entropy(selected_file, packer_analysis)
         if show_details:
             print(f"[+] Shannon Entropy Score: {paint_yellow(f'{entropy_score}/8.0')}")
             status_color = paint_yellow if "INDICATOR" in entropy_status else paint_green
             print(f"[->] Status: {status_color(entropy_status)}")
+            if packer_analysis["detected"]:
+                print(f"[->] Packer context: {paint_yellow(', '.join(packer_analysis['packers']))}")
 
     if config["strings"]:
         if show_details:
@@ -138,7 +143,7 @@ def analyze_file(selected_file, config, show_details=True):
         report_path = save_report(
             selected_file, kb_size, hash_result, result_vt, alerts, all_strings,
             in_blacklist, config, entropy_score, entropy_status, real_type,
-            magic_alert, risk, analysis_duration, extracted_iocs
+            magic_alert, risk, analysis_duration, extracted_iocs, packer_analysis
         )
     return {
         "file": os.path.basename(selected_file),

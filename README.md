@@ -72,6 +72,7 @@ The toolkit can:
 - extract suspicious strings with regex matching
 - extract URLs, IP addresses, domains, e-mails, suspicious paths, and PowerShell/CMD commands
 - calculate Shannon entropy as an indicator of possible compression or packing
+- detect known packer signatures such as PyInstaller and UPX to contextualize entropy
 - identify file type from magic bytes and detect disguised PE executables
 - calculate a transparent risk score from the analysis indicators and explain the factors that raised it
 - assign higher weight to high-signal indicators such as `keylogger`, `VirtualAlloc`, PowerShell, and `cmd.exe`
@@ -103,6 +104,7 @@ CERBERUS/
 │   ├── hashes.py
 │   ├── magic_numbers.py
 │   ├── menu.py
+│   ├── packers.py
 │   ├── reports.py
 │   ├── risk.py
 │   ├── strings.py
@@ -266,6 +268,12 @@ Alerts found: 0
 - Classifies high entropy differently for compressed and media formats.
 - Reports `INDICATOR` or `NORMAL`; high entropy is evidence of possible compression, encryption, or packing, not proof of malware.
 
+### `modules/packers.py`
+
+- Detects conservative signatures for common packers such as PyInstaller and UPX.
+- Returns the packer name and matching evidence for report context.
+- Packer detection is informational: it does not add risk points or establish that a file is malicious.
+
 ### `modules/strings.py`
 
 - Extracts printable ASCII-like strings from binary content using regex.
@@ -313,6 +321,8 @@ CERBERUS inspects the file header bytes to determine the real file type. It trea
 ### Shannon Entropy
 
 Entropy is calculated from byte frequency distribution. High entropy is reported as an indicator of possible compression, encryption, or packing, while compressed media formats are treated as expected cases. Entropy alone contributes only a small amount to the score and does not make a file suspicious or trigger a VirusTotal lookup.
+
+Known packer signatures are checked alongside entropy. For example, a PyInstaller or UPX signature can explain high entropy in a packaged executable. This context is recorded in `entropy_analysis.packer_context`, but packing remains neutral evidence and must be combined with other indicators.
 
 ### IOC matching and regex extraction
 
