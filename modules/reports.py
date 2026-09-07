@@ -8,8 +8,9 @@ from datetime import datetime
 CERBERUS_VERSION = "1.0.0"
 
 
-def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration, iocs=None, packer_analysis=None, pe_analysis=None, file_type_analysis=None):
-    reports_folder = "reports"
+def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration, iocs=None, packer_analysis=None, pe_analysis=None, file_type_analysis=None, engine_times=None):
+    reports_folder = config_choices.get("output_dir", "reports")
+    report_format = config_choices.get("report_format", "all")
     if not os.path.exists(reports_folder):
         os.makedirs(reports_folder)
 
@@ -27,6 +28,7 @@ def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, de
             "analysis_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "cerberus_version": CERBERUS_VERSION,
             "analysis_duration_seconds": analysis_duration
+            ,"engine_times_seconds": engine_times or {}
         }
     }
 
@@ -97,12 +99,21 @@ def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, de
     json_name = f"report_{base_name}_{short_hash}.json"
     finalpath = os.path.join(reports_folder, json_name)
 
-    with open(finalpath, "w", encoding="utf-8") as f:
-        json.dump(report_data, f, indent=4, ensure_ascii=False)
+    if report_format in ("all", "json"):
+        with open(finalpath, "w", encoding="utf-8") as f:
+            json.dump(report_data, f, indent=4, ensure_ascii=False)
 
-    save_csv_report(report_data, reports_folder, base_name, short_hash)
-    save_html_report(report_data, reports_folder, base_name, short_hash)
+    if report_format in ("all", "json"):
+        pass
+    if report_format in ("all", "csv"):
+        save_csv_report(report_data, reports_folder, base_name, short_hash)
+    if report_format in ("all", "html"):
+        save_html_report(report_data, reports_folder, base_name, short_hash)
         
+    if report_format == "html":
+        return os.path.join(reports_folder, f"report_{base_name}_{short_hash}.html")
+    if report_format == "csv":
+        return os.path.join(reports_folder, f"report_{base_name}_{short_hash}.csv")
     return finalpath
 
 
