@@ -11,7 +11,7 @@ from modules.packers import detect_packers
 from modules.pe_analysis import analyze_pe
 from modules.hashes import calc_sha256, check_local_blacklist, virustotal_available, virustotal_check
 from modules.iocs import print_ioc_integrity
-from modules.reports import list_analysis_history, save_batch_summary, save_report
+from modules.reports import list_analysis_history, save_batch_summary, clear_history, save_report
 from modules.risk import calculate_risk
 from modules.menu import optionsMenu
 from modules.analysis_cache import AnalysisCache
@@ -442,32 +442,46 @@ def analyze_folder(folder_path, config):
     results = []
     if config.get("cache_enabled", True) and not config.get("_cache"):
         config["_cache"] = AnalysisCache(config.get("output_dir", "reports"), CERBERUS_VERSION)
+
     worker_count = max(1, min(int(config.get("workers", 1)), len(candidate_files) or 1))
+    chunk_size = max(1, int(config.get("batch_chunk_size", worker_count * 4)))
 
     def analyze_candidate(filepath):
         return analyze_file(filepath, config, show_details=False)
 
-    with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        futures = {executor.submit(analyze_candidate, filepath): filepath for filepath in candidate_files}
-        for index, future in enumerate(as_completed(futures), start=1):
-            filepath = futures[future]
-            print(paint_cyan(f"\n[{index}/{len(candidate_files)}] ") + paint_bold(os.path.basename(filepath)))
-            try:
-                result = future.result()
-                results.append(result)
-                report_status = "report generated" if result["report_generated"] else "report skipped"
-                cache_status = " / cached" if result.get("cache_hit") else ""
-                score_label = f"({result['risk_score']}/100)"
-                duration_label = f"{result['analysis_duration']:.3f}s"
-                print(
-                    f"  {paint_dim('Risk')} {paint_bold(result['risk_level'])} "
-                    f"{paint_dim(score_label)}"
-                    f"  {paint_dim('Time')} {paint_yellow(duration_label)}"
-                    f"  {paint_dim(report_status + cache_status)}"
-                )
-            except (OSError, ValueError) as error:
-                results.append({"file": os.path.basename(filepath), "path": filepath, "success": False, "error": str(error)})
-                print(paint_red(f"[-] Analysis failed: {error}"))
+    def process_chunk(chunk_files, start_index):
+        chunk_results = []
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = {executor.submit(analyze_candidate, filepath): filepath for filepath in chunk_files}
+            for local_index, future in enumerate(as_completed(futures), start=1):
+                filepath = futures[future]
+                global_index = start_index + local_index
+                print(paint_cyan(f"\n[{global_index}/{len(candidate_files)}] ") + paint_bold(os.path.basename(filepath)))
+                try:
+                    result = future.result()
+                    chunk_results.append(result)
+                    report_status = "report generated" if result["report_generated"] else "report skipped"
+                    cache_status = " / cached" if result.get("cache_hit") else ""
+                    score_label = f"({result['risk_score']}/100)"
+                    duration_label = f"{result['analysis_duration']:.3f}s"
+                    print(
+                        f"  {paint_dim('Risk')} {paint_bold(result['risk_level'])} "
+                        f"{paint_dim(score_label)}"
+                        f"  {paint_dim('Time')} {paint_yellow(duration_label)}"
+                        f"  {paint_dim(report_status + cache_status)}"
+                    )
+                except (OSError, ValueError) as error:
+                    chunk_results.append({"file": os.path.basename(filepath), "path": filepath, "success": False, "error": str(error)})
+                    print(paint_red(f"[-] Analysis failed: {error}"))
+        return chunk_results
+
+    for chunk_start in range(0, len(candidate_files), chunk_size):
+        chunk = candidate_files[chunk_start:chunk_start + chunk_size]
+        results.extend(process_chunk(chunk, chunk_start))
+
+    cache = config.get("_cache")
+    if cache:
+        cache.close()
 
     duration = round(time.perf_counter() - batch_start, 3)
     summary_path = save_batch_summary(folder_path, results, duration, reports_folder=config.get("output_dir", "reports"), skipped=skipped)
@@ -481,6 +495,7 @@ def build_cli_parser():
     scan_mode = parser.add_mutually_exclusive_group()
     scan_mode.add_argument("--full", action="store_true", help="run all analysis engines")
     scan_mode.add_argument("--quick", action="store_true", help="run blacklist and file-type checks")
+    scan_mode.add_argument("--clear-history", action="store_true", help="clear all analysis reports and history")
     parser.add_argument("--no-virustotal", action="store_true", help="disable VirusTotal queries")
     parser.add_argument("--report", choices=("all", "json", "csv", "html"), default="all", help="report format")
     parser.add_argument("--output", default="reports", help="report output directory")
@@ -488,6 +503,7 @@ def build_cli_parser():
     parser.add_argument("--workers", type=int, default=1, help="parallel workers for batch mode")
     parser.add_argument("--no-cache", action="store_true", help="disable the persistent analysis cache")
     parser.add_argument("--max-file-size", type=int, help="skip files larger than this many bytes")
+    parser.add_argument("--include-cache", action="store_true", help="also clear the analysis cache when using --clear-history")
     return parser
 
 
@@ -538,6 +554,21 @@ def main():
     if len(sys.argv) > 1:
         parser = build_cli_parser()
         args = parser.parse_args()
+        
+        if args.clear_history:
+            if not args.quiet:
+                print_banner()
+            result = clear_history(args.output, include_cache=args.include_cache)
+            print(f"[+] Deleted {result['deleted']} report file(s)")
+            if result['cache_cleared']:
+                print("[+] Analysis cache cleared")
+            if result['errors']:
+                for error in result['errors']:
+                    print(f"[-] Error: {error}")
+            if not args.quiet:
+                print_watermark()
+            return
+
         if not args.file:
             parser.error("a file path is required in CLI mode")
         config = cli_config(args)
@@ -545,6 +576,9 @@ def main():
             print_banner()
         result = analyze_file(args.file, config, show_details=not args.quiet)
         print_result_summary(result, config)
+        cache = config.get("_cache")
+        if cache:
+            cache.close()
         if not args.quiet:
             print_watermark()
         return

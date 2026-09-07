@@ -188,22 +188,49 @@ class CerberusApp(tk.Tk):
             self.batch_tree.column(column, width=width, anchor="w")
         self.batch_tree.pack(fill="both", expand=True)
 
-        self.history_view = self._simple_view(parent, "HISTORY", "Previous JSON analyses")
-        self.history_text = self.history_view[1]
-        self.view_widgets["history"] = (self.history_view[0],)
-        self.reports_view = self._simple_view(parent, "REPORTS", "Generated JSON, CSV, and HTML reports")
-        self.reports_text = self.reports_view[1]
-        self.view_widgets["reports"] = (self.reports_view[0],)
+        self.history_view = self._build_history_view(parent)
+        self.view_widgets["history"] = (self.history_view,)
+        self.reports_view = self._build_reports_view(parent)
+        self.view_widgets["reports"] = (self.reports_view,)
         self.iocs_view = self._simple_view(parent, "IOC LISTS", "Local indicator list integrity")
         self.iocs_text = self.iocs_view[1]
         self.view_widgets["iocs"] = (self.iocs_view[0],)
-        self.settings_view = self._simple_view(parent, "SETTINGS", "Operational settings for the analysis core")
-        self.settings_text = self.settings_view[1]
-        self.view_widgets["settings"] = (self.settings_view[0],)
+        self.settings_view = self._build_settings_view(parent)
+        self.view_widgets["settings"] = (self.settings_view,)
+        self._show_view("analysis")
+
+    def _build_history_view(self, parent):
+        view = ttk.Frame(parent, style="Surface.TFrame", padding=18)
+        header = ttk.Frame(view, style="Surface.TFrame")
+        header.pack(fill="x", pady=(0, 14))
+        ttk.Label(header, text="HISTORY", style="PanelTitle.TLabel").pack(side="left")
+        ttk.Label(header, text="Previous JSON analyses", style="Muted.TLabel").pack(side="left", padx=(12, 0))
+        ttk.Button(header, text="Clear History", command=self._clear_history, style="Secondary.TButton").pack(side="right")
+        self.history_text = tk.Text(view, background=COLORS["surface"], foreground=COLORS["text"], relief="flat", borderwidth=0, wrap="word", font=("Consolas", 9), state="disabled")
+        self.history_text.pack(fill="both", expand=True)
+        return view
+
+    def _build_reports_view(self, parent):
+        view = ttk.Frame(parent, style="Surface.TFrame", padding=18)
+        header = ttk.Frame(view, style="Surface.TFrame")
+        header.pack(fill="x", pady=(0, 14))
+        ttk.Label(header, text="REPORTS", style="PanelTitle.TLabel").pack(side="left")
+        ttk.Label(header, text="Generated JSON, CSV, and HTML reports", style="Muted.TLabel").pack(side="left", padx=(12, 0))
+        ttk.Button(header, text="Clear Reports", command=self._clear_reports, style="Secondary.TButton").pack(side="right")
+        self.reports_text = tk.Text(view, background=COLORS["surface"], foreground=COLORS["text"], relief="flat", borderwidth=0, wrap="word", font=("Consolas", 9), state="disabled")
+        self.reports_text.pack(fill="both", expand=True)
+        return view
+
+    def _build_settings_view(self, parent):
+        view = ttk.Frame(parent, style="Surface.TFrame", padding=18)
+        ttk.Label(view, text="SETTINGS", style="PanelTitle.TLabel").pack(anchor="w")
+        ttk.Label(view, text="Operational settings for the analysis core", style="Muted.TLabel").pack(anchor="w", pady=(4, 14))
+        self.settings_text = tk.Text(view, background=COLORS["surface"], foreground=COLORS["text"], relief="flat", borderwidth=0, wrap="word", font=("Consolas", 9), state="disabled")
+        self.settings_text.pack(fill="both", expand=True)
         self.settings_text.configure(state="normal")
         self.settings_text.insert("end", "Cache: enabled by default\nBatch workers: configured by the analysis profile\nVirusTotal: controlled by VT_API_KEY\n\nUse CLI flags for advanced automation settings.")
         self.settings_text.configure(state="disabled")
-        self._show_view("analysis")
+        return view
 
     def _add_button_behavior(self, button, tooltip):
         Tooltip(button, tooltip)
@@ -278,6 +305,23 @@ class CerberusApp(tk.Tk):
             lines.append(f"  malformed: {len(data['invalid'])}")
         self._write_view_text(self.iocs_text, "\n".join(lines))
 
+    def _clear_history(self):
+        if not messagebox.askyesno("Clear History", "Delete all analysis history (JSON reports)?\nThis cannot be undone."):
+            return
+        from modules.reports import clear_history
+        result = clear_history("reports", include_cache=False)
+        self._load_history()
+        messagebox.showinfo("History Cleared", f"Deleted {result['deleted']} history file(s).")
+
+    def _clear_reports(self):
+        if not messagebox.askyesno("Clear Reports", "Delete ALL reports (JSON, CSV, HTML) and batch summaries?\nThis cannot be undone."):
+            return
+        from modules.reports import clear_history
+        result = clear_history("reports", include_cache=False)
+        self._load_reports()
+        self._load_history()
+        messagebox.showinfo("Reports Cleared", f"Deleted {result['deleted']} report file(s).")
+
     def _choose_batch_folder(self):
         folder = filedialog.askdirectory(title="Select a folder for batch analysis")
         if not folder:
@@ -297,6 +341,10 @@ class CerberusApp(tk.Tk):
             directories[:] = [directory for directory in directories if directory.lower() not in ignored]
             files.extend(os.path.join(root, name) for name in filenames)
         files = [filepath for filepath in sorted(files) if os.path.splitext(filepath)[1].lower() not in asset_extensions]
+        
+        worker_count = min(4, max(1, os.cpu_count() or 1))
+        chunk_size = worker_count * 4
+        
         config = {
             "blacklist": True,
             "virustotal": False,
@@ -309,38 +357,52 @@ class CerberusApp(tk.Tk):
             "report_format": "json",
             "output_dir": "reports",
             "quiet": True,
-            "workers": min(4, max(1, os.cpu_count() or 1)),
+            "workers": worker_count,
             "cache_enabled": True,
             "minimum_report_score": 50,
             "virustotal_suspicious_only": True,
+            "batch_chunk_size": chunk_size,
         }
         config["_cache"] = AnalysisCache(config["output_dir"], CERBERUS_VERSION)
+        
         self.events.put(("batch_started", len(files)))
         batch_started = time.perf_counter()
         batch_results = []
+        
         def analyze_candidate(filepath):
             return self.analyzer.analyze_file(filepath, config, show_details=False)
+        
+        def process_chunk(chunk_files, start_index):
+            chunk_results = []
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                futures = {executor.submit(analyze_candidate, filepath): filepath for filepath in chunk_files}
+                for local_index, future in enumerate(as_completed(futures), start=1):
+                    filepath = futures[future]
+                    try:
+                        result = future.result()
+                        chunk_results.append(result)
+                        global_index = start_index + local_index
+                        self.events.put(("batch_result", global_index, len(files), result))
+                    except Exception as error:
+                        failure = {
+                            "file": os.path.basename(filepath),
+                            "path": filepath,
+                            "success": False,
+                            "error": str(error),
+                        }
+                        chunk_results.append(failure)
+                        global_index = start_index + local_index
+                        self.events.put(("batch_error", global_index, len(files), filepath, str(error)))
+            return chunk_results
 
-        with ThreadPoolExecutor(max_workers=config["workers"]) as executor:
-            futures = {
-                executor.submit(analyze_candidate, filepath): filepath
-                for filepath in files
-            }
-            for index, future in enumerate(as_completed(futures), start=1):
-                filepath = futures[future]
-                try:
-                    result = future.result()
-                    batch_results.append(result)
-                    self.events.put(("batch_result", index, len(files), result))
-                except Exception as error:
-                    failure = {
-                        "file": os.path.basename(filepath),
-                        "path": filepath,
-                        "success": False,
-                        "error": str(error),
-                    }
-                    batch_results.append(failure)
-                    self.events.put(("batch_error", index, len(files), filepath, str(error)))
+        for chunk_start in range(0, len(files), chunk_size):
+            chunk = files[chunk_start:chunk_start + chunk_size]
+            batch_results.extend(process_chunk(chunk, chunk_start))
+
+        cache = config.get("_cache")
+        if cache:
+            cache.close()
+
         summary_path = save_batch_summary(
             folder,
             batch_results,

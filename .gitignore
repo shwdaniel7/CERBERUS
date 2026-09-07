@@ -16,6 +16,15 @@ __pycache__/
 *.pyd
 .pytest_cache/
 
+# Arquivos de validação e testes locais
+validate_*.py
+create_test_*.py
+check_*.py
+test_*.py
+test_*.exe
+test_batch/
+VALIDATION.md
+
 # Configurações locais do editor de código (VS Code / PyCharm)
 .vscode/
 .idea/
