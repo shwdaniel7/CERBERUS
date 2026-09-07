@@ -16,6 +16,7 @@ def optionsMenu():
         "blacklist": False,
         "virustotal": False,
         "strings": False,
+        "ioc_extract": False,
         "entropy": False,
         "magic_numbers": False,
         "gerar_report": False
@@ -34,6 +35,7 @@ def optionsMenu():
                 "blacklist": True,
                 "virustotal": True,
                 "strings": True,
+                "ioc_extract": True,
                 "entropy": True,
                 "magic_numbers": True,
                 "gerar_report": True,
@@ -49,6 +51,7 @@ def optionsMenu():
             config["blacklist"] = True
             config["virustotal"] = True
             config["strings"] = True
+            config["ioc_extract"] = True
             config["entropy"] = True
             config["magic_numbers"] = True
             config["gerar_report"] = True
@@ -66,6 +69,7 @@ def optionsMenu():
             config["blacklist"] = input("[?] Execute local blacklist check? (s/n): ").strip().lower() == 's'
             config["virustotal"] = input("[?] Query VirusTotal API? (s/n): ").strip().lower() == 's'
             config["strings"] = input("[?] Perform suspicious string scan? (s/n): ").strip().lower() == 's'
+            config["ioc_extract"] = input("[?] Extract URLs, IPs, domains, e-mails and commands? (s/n): ").strip().lower() == 's'
             config["entropy"] = input("[?] Calculate Byte Entropy Index? (s/n): ").strip().lower() == 's'
             config["magic_numbers"] = input("[?] Verify Magic Signature in Header? (s/n): ").strip().lower() == 's'
             config["gerar_report"] = input("[?] Do you want to export a JSON report at the end? (s/n): ").strip().lower() == 's'

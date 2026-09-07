@@ -8,7 +8,7 @@ HIGH_SIGNAL_TERMS = {
 }
 
 
-def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert):
+def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, iocs=None):
     score = 0
     factors = []
 
@@ -51,6 +51,17 @@ def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert)
     if magic_alert:
         score += 15
         factors.append("File extension does not match its header (+15)")
+
+    suspicious_iocs = sum(
+        len(iocs.get(category, []))
+        for category in ("suspicious_paths", "powershell_commands", "cmd_commands")
+    ) if iocs else 0
+    if suspicious_iocs:
+        ioc_points = min(12, suspicious_iocs * 3)
+        score += ioc_points
+        factors.append(
+            f"{suspicious_iocs} suspicious path/command IOC(s) (+{ioc_points})"
+        )
 
     score = min(100, score)
     if score >= 75:

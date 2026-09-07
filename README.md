@@ -70,6 +70,7 @@ The toolkit can:
 - compare the fingerprint against `iocs/blacklist.txt`
 - query VirusTotal using `VT_API_KEY` from `.env`
 - extract suspicious strings with regex matching
+- extract URLs, IP addresses, domains, e-mails, suspicious paths, and PowerShell/CMD commands
 - calculate Shannon entropy as an indicator of possible compression or packing
 - identify file type from magic bytes and detect disguised PE executables
 - calculate a transparent risk score from the analysis indicators and explain the factors that raised it
@@ -104,7 +105,8 @@ CERBERUS/
 │   ├── menu.py
 │   ├── reports.py
 │   ├── risk.py
-│   └── strings.py
+│   ├── strings.py
+│   └── ioc_extract.py
 ├── reports/
 
 ```
@@ -147,6 +149,7 @@ Modular separation keeps reputation checks, static analysis, and reporting isola
        ├─► Optional Shannon entropy analysis
        │
        ├─► Optional suspicious string extraction
+      ├─► Optional URL/IP/domain/e-mail/path/command extraction
        │
       ├─► Optional JSON, CSV, and HTML report generation
        │
@@ -271,6 +274,12 @@ Alerts found: 0
 - Ignores common benign terms such as `http`, `https`, `KERNEL32.dll`, and Python module names when generating alerts.
 - Returns the extracted strings and any triggered alerts.
 
+### `modules/ioc_extract.py`
+
+- Extracts URLs, valid IP addresses, domains, e-mail addresses, suspicious Windows/Unix paths, and PowerShell/CMD command fragments.
+- Returns values grouped by category in the `ioc_extraction` report section.
+- Network indicators are collected as evidence and do not increase risk by themselves; suspicious paths and shell commands add only a small risk signal.
+
 ### `modules/reports.py`
 
 - Generates JSON, CSV, and HTML output under `reports/`.
@@ -308,6 +317,8 @@ Entropy is calculated from byte frequency distribution. High entropy is reported
 ### IOC matching and regex extraction
 
 Embedded strings are extracted from raw file bytes using a regex pattern for printable sequences. IOC terms from `iocs/suspect_strings.txt` are matched as complete tokens, and common benign values such as protocol names, Windows runtime DLLs, and Python modules are kept as extracted strings without being promoted to alerts. A string alert is evidence to combine with other signals, not proof by itself.
+
+The separate `modules/ioc_extract.py` engine extracts structured observables from the same file content. It validates IPv4/IPv6 values, separates network indicators from suspicious paths and shell commands, and keeps all categories available in the JSON and HTML technical report.
 
 ---
 

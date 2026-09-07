@@ -8,7 +8,7 @@ from datetime import datetime
 CERBERUS_VERSION = "1.0.0"
 
 
-def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration):
+def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration, iocs=None):
     reports_folder = "reports"
     if not os.path.exists(reports_folder):
         os.makedirs(reports_folder)
@@ -72,9 +72,12 @@ def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, de
         static_analysis["alerts"] = []
         static_analysis["all_strings"] = []
 
+    static_analysis["ioc_extraction"] = iocs if config_choices.get("ioc_extract") else "Not executed"
+
     vt_match = re.search(r"Flagged by VirusTotal: (\d+)/(\d+)", result_vt or "")
     vt_indicators = int(vt_match.group(1)) if vt_match else 0
-    indicator_count = len(alerts) + int(bool(detected_bl)) + int(bool(magic_alert)) + vt_indicators
+    extracted_ioc_count = sum(len(values) for values in iocs.values()) if iocs else 0
+    indicator_count = len(alerts) + int(bool(detected_bl)) + int(bool(magic_alert)) + vt_indicators + extracted_ioc_count
     if "INDICATOR" in (entropy_status or ""):
         indicator_count += 1
     static_analysis["indicator_count"] = indicator_count
