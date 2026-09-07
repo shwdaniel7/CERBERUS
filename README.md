@@ -74,6 +74,8 @@ The toolkit can:
 - calculate Shannon entropy as an indicator of possible compression or packing
 - detect known packer signatures such as PyInstaller and UPX to contextualize entropy
 - analyze PE headers and sections when the optional `pefile` engine is available
+- compare declared extensions with detected file types and report compatibility
+- query VirusTotal only when an API key is configured, with explicit clean, unknown, suspicious, and malicious states
 - identify file type from magic bytes and detect disguised PE executables
 - calculate a transparent risk score from the analysis indicators and explain the factors that raised it
 - assign higher weight to high-signal indicators such as `keylogger`, `VirtualAlloc`, PowerShell, and `cmd.exe`
@@ -282,6 +284,12 @@ Alerts found: 0
 - Reports the `PE` signature, section count, section names, raw and virtual sizes, and entropy per section.
 - Returns `unavailable` when `pefile` is not installed and skips non-`MZ` files.
 - PE structure is descriptive evidence and does not add risk points by itself.
+
+### File type and VirusTotal results
+
+The magic-number engine reports the declared extension, detected type, and compatibility as `Compatible`, `Mismatch`, or `Unknown`. It covers executable, archive, document, image, audio, and video signatures.
+
+VirusTotal requests use a 15-second timeout and are skipped when `VT_API_KEY` is absent. A `404` is stored as `unknown`, while a successful analysis is classified as `clean`, `suspicious`, or `malicious`. Reports preserve separate `malicious`, `suspicious`, `harmless`, and `undetected` counts.
 
 ### `modules/strings.py`
 

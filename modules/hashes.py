@@ -7,6 +7,7 @@ from modules.iocs import load_blacklist
 load_dotenv()
 
 VT_API_KEY = os.getenv("VT_API_KEY")
+VT_TIMEOUT_SECONDS = 15
 
 def calc_sha256(filepath):
     sha256_hash = hashlib.sha256()
@@ -21,28 +22,60 @@ def check_local_blacklist(file_hash):
     valid_hashes, _, _ = load_blacklist()
     return file_hash.lower() in valid_hashes
 
+def virustotal_available():
+    return bool(VT_API_KEY)
+
+
+def _result(status, message, **counts):
+    return {
+        "status": status,
+        "message": message,
+        "malicious": counts.get("malicious", 0),
+        "suspicious": counts.get("suspicious", 0),
+        "harmless": counts.get("harmless", 0),
+        "undetected": counts.get("undetected", 0),
+    }
+
+
 def virustotal_check(file_hash):
     if not VT_API_KEY:
-        return "VirusTotal: API key not configured."
+        return _result("not_configured", "VirusTotal: API key not configured; request not sent.")
 
     url = f"https://www.virustotal.com/api/v3/files/{file_hash}"
     headers = {"x-apikey": VT_API_KEY}
 
     try:
-        response = requests.get(url, headers=headers, timeout=15)
+        response = requests.get(url, headers=headers, timeout=VT_TIMEOUT_SECONDS)
         
         if response.status_code == 200:
             dados = response.json()
-            stats = dados["data"]["attributes"]["last_analysis_stats"]
-            maliciosos = stats["malicious"]
-            total_engines = sum(stats.values())
-            return f"Flagged by VirusTotal: {maliciosos}/{total_engines} Antivirus softwares detected a threat."
+            stats = dados.get("data", {}).get("attributes", {}).get("last_analysis_stats", {})
+            counts = {
+                "malicious": int(stats.get("malicious", 0)),
+                "suspicious": int(stats.get("suspicious", 0)),
+                "harmless": int(stats.get("harmless", 0)),
+                "undetected": int(stats.get("undetected", 0)),
+            }
+            if counts["malicious"]:
+                status = "malicious"
+                message = "VirusTotal: malicious detections reported."
+            elif counts["suspicious"]:
+                status = "suspicious"
+                message = "VirusTotal: suspicious detections reported."
+            else:
+                status = "clean"
+                message = "VirusTotal: no malicious or suspicious detections reported."
+            return _result(
+                status,
+                message,
+                **counts,
+            )
         elif response.status_code == 404:
-            return "VirusTotal: File is clean or unknown in their database."
+            return _result("unknown", "VirusTotal: file hash is unknown in their database.")
         elif response.status_code == 429:
-            return "VirusTotal: API rate limit or quota reached (HTTP 429)."
+            return _result("rate_limited", "VirusTotal: API rate limit or quota reached (HTTP 429).")
         else:
-            return f"VirusTotal: Error in API (Code {response.status_code})"
+            return _result("error", f"VirusTotal: error in API (code {response.status_code}).")
     
     except Exception as e:
-        return f"Error connecting to VirusTotal: {str(e)}"
+        return _result("error", f"VirusTotal: error connecting to API: {str(e)}")
