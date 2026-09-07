@@ -27,6 +27,41 @@ COLORS = {
 }
 
 
+class Tooltip:
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.window = None
+        widget.bind("<Enter>", self._show, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+
+    def _show(self, _event=None):
+        if self.window or not self.text:
+            return
+        x = self.widget.winfo_rootx() + 12
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
+        self.window = tk.Toplevel(self.widget)
+        self.window.wm_overrideredirect(True)
+        self.window.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(
+            self.window,
+            text=self.text,
+            background=COLORS["surface_alt"],
+            foreground=COLORS["text"],
+            relief="solid",
+            borderwidth=1,
+            padx=8,
+            pady=4,
+            font=("Segoe UI", 8),
+        )
+        label.pack()
+
+    def _hide(self, _event=None):
+        if self.window:
+            self.window.destroy()
+            self.window = None
+
+
 class CerberusApp(tk.Tk):
     def __init__(self, analyzer):
         super().__init__()
@@ -38,6 +73,9 @@ class CerberusApp(tk.Tk):
         self.completed_engines = 0
         self.last_result = None
         self.engine_states = {}
+        self._pulse_jobs = {}
+        self._result_reveal_job = None
+        self._result_reveal_job = None
         self.active_view = "analysis"
         self.view_widgets = {}
 
@@ -47,6 +85,7 @@ class CerberusApp(tk.Tk):
         self.configure(background=COLORS["bg"])
         self._configure_styles()
         self._build_layout()
+        self._bind_shortcuts()
         self.after(100, self._drain_events)
 
     def _configure_styles(self):
@@ -90,11 +129,16 @@ class CerberusApp(tk.Tk):
         self.quick_button.pack(side="left", padx=(0, 8))
         self.full_button = ttk.Button(controls, text="Full scan", command=lambda: self._start_scan(False), style="Action.TButton")
         self.full_button.pack(side="left")
+        self._add_button_behavior(self.open_button, "Open a file for static analysis (Ctrl+O)")
+        self._add_button_behavior(self.quick_button, "Run the lightweight local scan (F5)")
+        self._add_button_behavior(self.full_button, "Run the complete evidence scan (Ctrl+Enter)")
 
         navigation = ttk.Frame(root, style="Surface.TFrame", padding=(10, 8))
         navigation.pack(fill="x", pady=(0, 14))
         for view, label in (("analysis", "New Analysis"), ("batch", "Batch Scan"), ("history", "History"), ("reports", "Reports"), ("iocs", "IOC Lists"), ("settings", "Settings")):
-            ttk.Button(navigation, text=label, command=lambda selected=view: self._show_view(selected), style="Secondary.TButton").pack(side="left", padx=(0, 8))
+            button = ttk.Button(navigation, text=label, command=lambda selected=view: self._show_view(selected), style="Secondary.TButton")
+            button.pack(side="left", padx=(0, 8))
+            self._add_button_behavior(button, f"Open {label.lower()} view")
 
         target = ttk.Frame(root, style="Surface.TFrame", padding=(16, 12))
         target.pack(fill="x", pady=(0, 16))
@@ -161,6 +205,16 @@ class CerberusApp(tk.Tk):
         self.settings_text.configure(state="disabled")
         self._show_view("analysis")
 
+    def _add_button_behavior(self, button, tooltip):
+        Tooltip(button, tooltip)
+        button.bind("<Enter>", lambda _event: button.configure(cursor="hand2"), add="+")
+        button.bind("<Leave>", lambda _event: button.configure(cursor=""), add="+")
+
+    def _bind_shortcuts(self):
+        self.bind("<Control-o>", lambda _event: self._choose_file())
+        self.bind("<F5>", lambda _event: self._start_scan(True))
+        self.bind("<Control-Return>", lambda _event: self._start_scan(False))
+
     def _simple_view(self, parent, title, subtitle):
         view = ttk.Frame(parent, style="Surface.TFrame", padding=18)
         ttk.Label(view, text=title, style="PanelTitle.TLabel").pack(anchor="w")
@@ -179,6 +233,7 @@ class CerberusApp(tk.Tk):
         else:
             self.view_widgets[view_name][0].pack(fill="both", expand=True)
         self.active_view = view_name
+        self.status_label.configure(text=view_name.upper().replace("_", " "), foreground=COLORS["muted"])
         if view_name == "history":
             self._load_history()
         elif view_name == "reports":
@@ -547,6 +602,12 @@ class CerberusApp(tk.Tk):
         self.identity_values["type"].configure(text=file_type.get("detected_type", "-"))
         self.identity_values["extension"].configure(text=file_type.get("declared_extension", "-"))
         self.identity_values["compatibility"].configure(text=file_type.get("compatibility", "-"))
+        compatibility_color = {
+            "Compatible": COLORS["green"],
+            "Mismatch": COLORS["red"],
+            "Unknown": COLORS["yellow"],
+        }.get(file_type.get("compatibility"), COLORS["muted"])
+        self.identity_values["compatibility"].configure(foreground=compatibility_color)
         self.identity_values["hash"].configure(text=details.get("sha256", "Not calculated"), font=("Consolas", 8))
         self.identity_values["size"].configure(text=f"{details.get('size_bytes', 0)} bytes")
         self.path_label.configure(text=f"Path: {result.get('path', '-')}")
@@ -555,10 +616,18 @@ class CerberusApp(tk.Tk):
         self.score_label.configure(text=f"{risk['score']} / 100  |  {result['analysis_duration']:.3f}s")
         self.factors_text.configure(state="normal")
         self.factors_text.delete("1.0", "end")
-        for factor in risk["factors"]:
-            self.factors_text.insert("end", f"> {factor}\n\n")
         self.factors_text.configure(state="disabled")
+        self._reveal_factors(risk["factors"], 0)
         self._render_evidence(result)
+
+    def _reveal_factors(self, factors, index):
+        if index >= len(factors):
+            self._result_reveal_job = None
+            return
+        self.factors_text.configure(state="normal")
+        self.factors_text.insert("end", f"> {factors[index]}\n\n")
+        self.factors_text.configure(state="disabled")
+        self._result_reveal_job = self.after(90, self._reveal_factors, factors, index + 1)
 
     def _set_evidence_text(self, tab_name, heading, lines):
         _, text = self.evidence_tabs[tab_name]
@@ -645,6 +714,9 @@ class CerberusApp(tk.Tk):
         self.factors_text.configure(state="normal")
         self.factors_text.delete("1.0", "end")
         self.factors_text.configure(state="disabled")
+        if self._result_reveal_job:
+            self.after_cancel(self._result_reveal_job)
+            self._result_reveal_job = None
         for _, text in self.evidence_tabs.values():
             text.configure(state="normal")
             text.delete("1.0", "end")
@@ -655,6 +727,22 @@ class CerberusApp(tk.Tk):
         symbols = {"QUEUED": "○", "RUNNING": "●", "COMPLETE": "✓", "FAILED": "✕"}
         colors = {"QUEUED": COLORS["muted"], "RUNNING": COLORS["cyan"], "COMPLETE": COLORS["green"], "FAILED": COLORS["red"]}
         self.stage_labels[stage].configure(text=f"{symbols.get(state, '○')} {stage}", foreground=colors.get(state, COLORS["muted"]))
+        if state == "RUNNING":
+            if stage in self._pulse_jobs:
+                self.after_cancel(self._pulse_jobs.pop(stage))
+            self._pulse_stage(stage)
+        elif stage in self._pulse_jobs:
+            self.after_cancel(self._pulse_jobs.pop(stage))
+
+    def _pulse_stage(self, stage):
+        if not self.stage_labels[stage].cget("text").endswith(stage):
+            return
+        label = self.stage_labels[stage]
+        if label.cget("foreground") == COLORS["cyan"]:
+            label.configure(foreground=COLORS["crimson"])
+        else:
+            label.configure(foreground=COLORS["cyan"])
+        self._pulse_jobs[stage] = self.after(650, self._pulse_stage, stage)
 
     def _update_stages(self, current_engine):
         evidence_engines = set(self.engine_names) - {"SHA-256", "Local blacklist"}

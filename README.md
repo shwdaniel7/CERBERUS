@@ -228,6 +228,23 @@ CLI options:
 - `--no-cache`: disable the persistent SQLite analysis cache.
 - `--max-file-size BYTES`: skip files larger than the configured limit.
 
+### Terminal-only execution
+
+CERBERUS can run entirely from the terminal without opening the Tkinter dashboard. Provide the target file as the first argument and select a scan profile:
+
+```bash
+# Complete terminal analysis
+python analyzer.py sample.exe --full
+
+# Quick terminal analysis without VirusTotal
+python analyzer.py sample.exe --quick --no-virustotal
+
+# Automation-friendly output with no animation
+python analyzer.py sample.exe --full --no-virustotal --quiet
+```
+
+Terminal-only mode is intended for scripts, CI jobs, remote sessions, and environments without a graphical display. It writes the selected reports to the directory passed with `--output` and returns a non-interactive summary containing the risk level and execution time.
+
 Without a file argument, CERBERUS retains the interactive menu and graphical file selector. During normal analysis and batch scans, each enabled engine reports its execution time and the final result includes total duration.
 
 While an engine is running, the terminal displays an animated progress bar with the completed percentage, spinner, active engine, engine elapsed time, and total elapsed time. Batch scans retain the per-file progress line and show the same engine-level bar for every selected file. Use `--quiet` to disable animation for log-friendly automation.
@@ -257,6 +274,10 @@ The Evidence panel now keeps an `Overview` tab for live engine progress and prov
 ### Application flows
 
 The dashboard navigation now includes `New Analysis`, `Batch Scan`, `History`, `Reports`, `IOC Lists`, and `Settings`. Batch Scan runs files in the background and reports completion, risk, duration, cache hits, and failures incrementally. History reads previous JSON summaries, Reports lists generated artifacts, and IOC Lists reuses the existing integrity checks. These are the first operational flows; deeper report comparison and filtering remain future polish.
+
+### Interface polish
+
+The dashboard includes lightweight interaction polish without turning the forensic workflow into decoration: tooltips on controls, keyboard shortcuts (`Ctrl+O`, `F5`, and `Ctrl+Enter`), hover cursors, semantic compatibility colors, a subtle running-stage pulse, and a staggered verdict-factor reveal. Motion is disabled from the analysis data path and does not alter CLI or `--quiet` behavior.
 
 The application opens a file picker. After selecting a target file, choose one of the scan profiles:
 
