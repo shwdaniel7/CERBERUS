@@ -20,7 +20,10 @@ def optionsMenu():
         "entropy": False,
         "magic_numbers": False,
         "pe_analysis": False,
-        "gerar_report": False
+        "gerar_report": False,
+        "report_format": "all",
+        "output_dir": "reports",
+        "quiet": False,
     }
     
     while True:

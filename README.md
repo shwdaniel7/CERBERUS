@@ -198,6 +198,26 @@ Run the toolkit from the repository root:
 python analyzer.py
 ```
 
+The command above keeps the default Tkinter file selector. For automation, pass a file path and use CLI options; no graphical window is created:
+
+```bash
+python analyzer.py arquivo.exe --full
+python analyzer.py arquivo.exe --quick --no-virustotal --report html --output reports/ --quiet
+```
+
+CLI options:
+
+- `--full`: run all analysis engines.
+- `--quick`: run the local blacklist and file-type checks.
+- `--no-virustotal`: disable VirusTotal requests.
+- `--report all|json|csv|html`: choose generated report formats.
+- `--output PATH`: choose the report directory.
+- `--quiet`: suppress engine progress and print only the final risk and duration.
+
+Without a file argument, CERBERUS retains the interactive menu and graphical file selector. During normal analysis and batch scans, each enabled engine reports its execution time and the final result includes total duration.
+
+While an engine is running, the terminal displays an animated progress bar with the completed percentage, spinner, active engine, engine elapsed time, and total elapsed time. Batch scans retain the per-file progress line and show the same engine-level bar for every selected file. Use `--quiet` to disable animation for log-friendly automation.
+
 The application opens a file picker. After selecting a target file, choose one of the scan profiles:
 
 ```text
