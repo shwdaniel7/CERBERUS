@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter.filedialog import askdirectory, askopenfilename
 
 from modules.strings import strings 
+from modules.ioc_extract import extract_iocs, count_iocs
 from modules.hashes import calc_sha256, check_local_blacklist, virustotal_check
 from modules.iocs import print_ioc_integrity
 from modules.reports import list_analysis_history, save_batch_summary, save_report
@@ -50,6 +51,7 @@ def analyze_file(selected_file, config, show_details=True):
     entropy_status = "Not executed"
     real_type = "Not executed"
     magic_alert = None
+    extracted_iocs = {}
 
     if config["blacklist"] or config["virustotal"]:
         if show_details:
@@ -98,10 +100,21 @@ def analyze_file(selected_file, config, show_details=True):
             for alert in alerts:
                 print(f"  -> {paint_red(alert)}")
 
+    if config.get("ioc_extract"):
+        if show_details:
+            print(paint_cyan("\n--- Extracting URLs, IPs, Domains, E-mails and Commands ---"))
+        extracted_iocs = extract_iocs(selected_file)
+        if show_details:
+            print(f"Extracted IOC values: {paint_yellow(count_iocs(extracted_iocs))}")
+            for category, values in extracted_iocs.items():
+                if values:
+                    print(f"  -> {category}: {paint_yellow(len(values))}")
+
     suspicious_locally = bool(
         in_blacklist
         or alerts
         or magic_alert
+        or any(extracted_iocs.get(category) for category in ("suspicious_paths", "powershell_commands", "cmd_commands"))
     )
     should_query_virustotal = config["virustotal"] and (
         not config.get("virustotal_suspicious_only") or suspicious_locally
@@ -116,7 +129,7 @@ def analyze_file(selected_file, config, show_details=True):
     elif config["virustotal"]:
         result_vt = "VirusTotal: Skipped because no local indicators were found."
 
-    risk = calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert)
+    risk = calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, extracted_iocs)
     analysis_duration = round(time.perf_counter() - analysis_start, 3)
     report_path = None
     minimum_report_score = config.get("minimum_report_score", 0)
@@ -125,7 +138,7 @@ def analyze_file(selected_file, config, show_details=True):
         report_path = save_report(
             selected_file, kb_size, hash_result, result_vt, alerts, all_strings,
             in_blacklist, config, entropy_score, entropy_status, real_type,
-            magic_alert, risk, analysis_duration
+            magic_alert, risk, analysis_duration, extracted_iocs
         )
     return {
         "file": os.path.basename(selected_file),
