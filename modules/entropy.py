@@ -1,7 +1,7 @@
 import math
 import os
 
-def calculate_entropy(filepath):
+def calculate_entropy(filepath, packer_analysis=None):
     with open(filepath, "rb") as f:
         data = f.read()
         
@@ -27,6 +27,9 @@ def calculate_entropy(filepath):
     
     entropy_score = round(entropy, 2)
     
+    detected_packers = (packer_analysis or {}).get("packers", {})
+    packer_context = ", ".join(detected_packers)
+
     if extensao in formatos_compactados:
         status = "NORMAL: High entropy is expected for this file format (compressed media/archive)"
     else:
@@ -36,5 +39,8 @@ def calculate_entropy(filepath):
             status = "INDICATOR: High entropy may indicate compression or packing; not proof of malware"
         else:
             status = "NORMAL: Low randomness (Standard readable code/text)"
+
+    if packer_context:
+        status += f" (packer context: {packer_context}; packing is not proof of malware)"
         
     return entropy_score, status

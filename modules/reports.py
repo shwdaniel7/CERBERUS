@@ -8,7 +8,7 @@ from datetime import datetime
 CERBERUS_VERSION = "1.0.0"
 
 
-def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration, iocs=None):
+def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration, iocs=None, packer_analysis=None):
     reports_folder = "reports"
     if not os.path.exists(reports_folder):
         os.makedirs(reports_folder)
@@ -50,7 +50,8 @@ def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, de
     if config_choices["entropy"]:
         static_analysis["entropy_analysis"] = {
             "score": entropy_score,
-            "status": entropy_status
+            "status": entropy_status,
+            "packer_context": packer_analysis or {"detected": False, "packers": {}},
         }
     else:
         static_analysis["entropy_analysis"] = "Not executed"
