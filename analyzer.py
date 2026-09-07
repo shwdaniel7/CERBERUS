@@ -382,6 +382,19 @@ def analyze_file(selected_file, config, show_details=True):
         "engine_times": engine_times,
         "report": report_path,
         "report_generated": should_generate_report,
+        "details": {
+            "sha256": hash_result,
+            "size_bytes": byte_size,
+            "file_type": file_type_analysis,
+            "alerts": alerts,
+            "strings_count": len(all_strings),
+            "iocs": extracted_iocs,
+            "entropy_score": entropy_score,
+            "entropy_status": entropy_status,
+            "packers": packer_analysis,
+            "pe_analysis": pe_analysis,
+            "virustotal": result_vt,
+        },
     }
     emit_event(config, AnalysisEvent(
         "file_completed", selected_file, status="completed", progress=1.0,
@@ -534,48 +547,8 @@ def main():
             print_watermark()
         return
 
-    print_banner()
-
-    config = optionsMenu()
-
-    if config.get("history"):
-        list_analysis_history()
-        return
-
-    if config.get("ioc_integrity"):
-        print_ioc_integrity()
-        return
-
-    if config.get("batch"):
-        selected_folder = upload_folder()
-        if not selected_folder:
-            print(paint_red("[-] No folder selected. Closing the program."))
-            return
-        analyze_folder(selected_folder, config)
-        return
-
-    print("[*] Select a file to begin.")
-    selected_file = uploadFile()
-
-    if not selected_file:
-        print(paint_red("[-] No files selected. Closing the program."))
-        return
-
-    result = analyze_file(selected_file, config)
-    print_result_summary(result, config)
-
-    if config["gerar_report"]:
-        print(paint_cyan("\n--- Exporting Results ---"))
-        caminho_salvo = result["report"]
-        print(paint_green(f"[+] Dynamic report generated at: {caminho_salvo}"))
-        if config.get("report_format", "all") == "all":
-            report_base = os.path.splitext(caminho_salvo)[0]
-            print(paint_green(f"[+] CSV report generated at: {report_base}.csv"))
-            print(paint_green(f"[+] HTML report generated at: {report_base}.html"))
-    else:
-        print(paint_yellow("\n[+] Analysis completed without generating a report."))
-
-    print_watermark()
+    from modules.gui import launch_gui
+    launch_gui(sys.modules[__name__])
 
 
 if __name__ == "__main__":

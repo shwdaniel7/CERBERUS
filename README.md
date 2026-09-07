@@ -53,7 +53,7 @@ These modules are composed into a command-driven analyzer in `analyzer.py`, whic
 
 ## ✨ Capabilities
 
-CERBERUS implements three scan profiles:
+CERBERUS implements interactive and automated scan profiles:
 
 | Profile | Enabled Engines | Report Output |
 |---|---|---|
@@ -63,6 +63,8 @@ CERBERUS implements three scan profiles:
 | Analysis History | Lists previous JSON reports with optional name, hash, or risk-level filtering | Terminal listing |
 | Batch Scan | Full Scan applied to every file in a selected folder | Individual reports plus batch summary |
 | IOC Lists Integrity | Validates local hashes and suspicious terms, reporting valid and malformed entries | Terminal listing |
+
+The default no-argument launch opens the first Tkinter dashboard. The dashboard organizes each analysis into `IDENTITY`, `EVIDENCE`, and `VERDICT`, while CLI mode remains available for automation.
 
 The toolkit can:
 
@@ -85,6 +87,7 @@ The toolkit can:
 - select a folder and analyze relevant files recursively, generating individual reports only when the risk is High or Critical
 - skip common static assets and generated dependency folders during batch analysis
 - validate and reload IOC lists without changing the source code
+- use the first dashboard interface to select files, run scans, monitor engines, and inspect results
 
 ---
 
@@ -103,6 +106,11 @@ CERBERUS/
 │   └── suspect_strings.txt
 ├── modules/
 │   ├── colors.py
+│   ├── gui.py
+│   ├── analysis_cache.py
+│   ├── analysis_config.py
+│   ├── analysis_events.py
+│   ├── file_metrics.py
 │   ├── entropy.py
 │   ├── hashes.py
 │   ├── magic_numbers.py
@@ -118,6 +126,9 @@ CERBERUS/
 ```
 
 - `analyzer.py` is the entrypoint and orchestrates analysis flow.
+- `modules/gui.py` provides the first Tkinter dashboard without duplicating analysis logic.
+- `modules/analysis_events.py` defines lifecycle events consumed by the dashboard and future interfaces.
+- `modules/analysis_cache.py` stores reusable results for repeated scans.
 - `modules/` contains each analysis engine and utilities.
 - `iocs/` stores local indicators for blacklist and suspicious string matching.
 - `reports/` is the output folder for JSON, CSV, and HTML report files.
@@ -226,6 +237,16 @@ Interactive output includes a red CERBERUS identity banner, `[>]` engine-start s
 Batch analysis uses configurable workers and a persistent cache keyed by file metadata, enabled engines, and analyzer version. Repeated scans can reuse previous results when the file and configuration are unchanged. When SHA-256 and entropy are both enabled, their reusable byte metrics are collected in one streaming pass.
 
 The analysis core emits structured `AnalysisEvent` values for file and engine lifecycle changes. Future interfaces can subscribe to these events without parsing terminal output.
+
+### First dashboard interface
+
+Running `python analyzer.py` opens the initial Tkinter dashboard. Its layout follows the CERBERUS identity:
+
+- `IDENTITY`: file name, type, extension, compatibility, hash, and size.
+- `EVIDENCE`: engine states, progress, and execution times.
+- `VERDICT`: risk level, score, factors, and report path.
+
+The dashboard runs analysis in a background thread so the window remains responsive. It is a first functional interface; batch controls, history navigation, and richer report exploration remain future interface work. CLI mode is unchanged for scripts and automation.
 
 The application opens a file picker. After selecting a target file, choose one of the scan profiles:
 
