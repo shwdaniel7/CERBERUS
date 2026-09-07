@@ -213,12 +213,19 @@ CLI options:
 - `--report all|json|csv|html`: choose generated report formats.
 - `--output PATH`: choose the report directory.
 - `--quiet`: suppress engine progress and print only the final risk and duration.
+- `--workers N`: configure concurrent workers for batch analysis.
+- `--no-cache`: disable the persistent SQLite analysis cache.
+- `--max-file-size BYTES`: skip files larger than the configured limit.
 
 Without a file argument, CERBERUS retains the interactive menu and graphical file selector. During normal analysis and batch scans, each enabled engine reports its execution time and the final result includes total duration.
 
 While an engine is running, the terminal displays an animated progress bar with the completed percentage, spinner, active engine, engine elapsed time, and total elapsed time. Batch scans retain the per-file progress line and show the same engine-level bar for every selected file. Use `--quiet` to disable animation for log-friendly automation.
 
 Interactive output includes a red CERBERUS identity banner, `[>]` engine-start states, `[OK]` completion states, and a final summary divided into `VERDICT`, `EVIDENCE`, and `IDENTITY`, with deliberate spacing between analysis blocks.
+
+Batch analysis uses configurable workers and a persistent cache keyed by file metadata, enabled engines, and analyzer version. Repeated scans can reuse previous results when the file and configuration are unchanged. When SHA-256 and entropy are both enabled, their reusable byte metrics are collected in one streaming pass.
+
+The analysis core emits structured `AnalysisEvent` values for file and engine lifecycle changes. Future interfaces can subscribe to these events without parsing terminal output.
 
 The application opens a file picker. After selecting a target file, choose one of the scan profiles:
 

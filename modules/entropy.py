@@ -1,17 +1,20 @@
 import math
 import os
 
-def calculate_entropy(filepath, packer_analysis=None):
-    with open(filepath, "rb") as f:
-        data = f.read()
-        
-    file_len = len(data)
+def calculate_entropy(filepath, packer_analysis=None, metrics=None):
+    if metrics:
+        file_len = metrics["file_size"]
+        byte_counts = metrics["byte_counts"]
+    else:
+        with open(filepath, "rb") as f:
+            data = f.read()
+        file_len = len(data)
+        byte_counts = [0] * 256
+        for byte in data:
+            byte_counts[byte] += 1
+
     if file_len == 0:
         return 0.0, "Empty File"
-        
-    byte_counts = [0] * 256
-    for byte in data:
-        byte_counts[byte] += 1
         
     entropy = 0.0
     for count in byte_counts:
