@@ -19,6 +19,7 @@ def optionsMenu():
         "ioc_extract": False,
         "entropy": False,
         "magic_numbers": False,
+        "pe_analysis": False,
         "gerar_report": False
     }
     
@@ -38,6 +39,7 @@ def optionsMenu():
                 "ioc_extract": True,
                 "entropy": True,
                 "magic_numbers": True,
+                "pe_analysis": True,
                 "gerar_report": True,
                 "minimum_report_score": 50,
                 "virustotal_suspicious_only": True,
@@ -54,6 +56,7 @@ def optionsMenu():
             config["ioc_extract"] = True
             config["entropy"] = True
             config["magic_numbers"] = True
+            config["pe_analysis"] = True
             config["gerar_report"] = True
             return config
             
@@ -72,6 +75,7 @@ def optionsMenu():
             config["ioc_extract"] = input("[?] Extract URLs, IPs, domains, e-mails and commands? (s/n): ").strip().lower() == 's'
             config["entropy"] = input("[?] Calculate Byte Entropy Index? (s/n): ").strip().lower() == 's'
             config["magic_numbers"] = input("[?] Verify Magic Signature in Header? (s/n): ").strip().lower() == 's'
+            config["pe_analysis"] = input("[?] Analyze PE sections when applicable? (s/n): ").strip().lower() == 's'
             config["gerar_report"] = input("[?] Do you want to export a JSON report at the end? (s/n): ").strip().lower() == 's'
             return config
             

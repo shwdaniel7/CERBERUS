@@ -73,6 +73,7 @@ The toolkit can:
 - extract URLs, IP addresses, domains, e-mails, suspicious paths, and PowerShell/CMD commands
 - calculate Shannon entropy as an indicator of possible compression or packing
 - detect known packer signatures such as PyInstaller and UPX to contextualize entropy
+- analyze PE headers and sections when the optional `pefile` engine is available
 - identify file type from magic bytes and detect disguised PE executables
 - calculate a transparent risk score from the analysis indicators and explain the factors that raised it
 - assign higher weight to high-signal indicators such as `keylogger`, `VirtualAlloc`, PowerShell, and `cmd.exe`
@@ -105,6 +106,7 @@ CERBERUS/
 │   ├── magic_numbers.py
 │   ├── menu.py
 │   ├── packers.py
+│   ├── pe_analysis.py
 │   ├── reports.py
 │   ├── risk.py
 │   ├── strings.py
@@ -274,6 +276,13 @@ Alerts found: 0
 - Returns the packer name and matching evidence for report context.
 - Packer detection is informational: it does not add risk points or establish that a file is malicious.
 
+### `modules/pe_analysis.py`
+
+- Analyzes `MZ` files with the optional `pefile` dependency.
+- Reports the `PE` signature, section count, section names, raw and virtual sizes, and entropy per section.
+- Returns `unavailable` when `pefile` is not installed and skips non-`MZ` files.
+- PE structure is descriptive evidence and does not add risk points by itself.
+
 ### `modules/strings.py`
 
 - Extracts printable ASCII-like strings from binary content using regex.
@@ -329,6 +338,14 @@ Known packer signatures are checked alongside entropy. For example, a PyInstalle
 Embedded strings are extracted from raw file bytes using a regex pattern for printable sequences. IOC terms from `iocs/suspect_strings.txt` are matched as complete tokens, and common benign values such as protocol names, Windows runtime DLLs, and Python modules are kept as extracted strings without being promoted to alerts. A string alert is evidence to combine with other signals, not proof by itself.
 
 The separate `modules/ioc_extract.py` engine extracts structured observables from the same file content. It validates IPv4/IPv6 values, separates network indicators from suspicious paths and shell commands, and keeps all categories available in the JSON and HTML technical report.
+
+### UTF-16 strings and PE sections
+
+The string engine scans both ASCII-like bytes and UTF-16LE text, which covers common Windows Unicode resources and embedded messages. The optional PE engine stores section-level details under `pe_analysis` in the report. Install `pefile` to enable it:
+
+```bash
+pip install pefile
+```
 
 ---
 
