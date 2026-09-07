@@ -53,7 +53,7 @@ These modules are composed into a command-driven analyzer in `analyzer.py`, whic
 
 ## ✨ Capabilities
 
-CERBERUS implements three scan profiles:
+CERBERUS implements interactive and automated scan profiles:
 
 | Profile | Enabled Engines | Report Output |
 |---|---|---|
@@ -61,8 +61,11 @@ CERBERUS implements three scan profiles:
 | Quick Scan | Local blacklist, magic number header check | No report |
 | Custom Scan | User-selected combination of all available engines | Optional JSON, CSV, and HTML reports |
 | Analysis History | Lists previous JSON reports with optional name, hash, or risk-level filtering | Terminal listing |
-| Batch Scan | Full Scan applied to every file in a selected folder | Individual reports plus batch summary |
+| Batch Scan | Full Scan applied to every file in a selected folder with **chunked concurrency**, cache reuse, and optimized SQLite WAL cache | Risk-filtered JSON reports plus batch summary |
 | IOC Lists Integrity | Validates local hashes and suspicious terms, reporting valid and malformed entries | Terminal listing |
+| **Clear History/Reports** | Delete all reports (JSON, CSV, HTML) and optionally the analysis cache | Terminal confirmation + GUI buttons |
+
+The default no-argument launch opens the first Tkinter dashboard. The dashboard organizes each analysis into `IDENTITY`, `EVIDENCE`, and `VERDICT`, while CLI mode remains available for automation.
 
 The toolkit can:
 
@@ -85,6 +88,9 @@ The toolkit can:
 - select a folder and analyze relevant files recursively, generating individual reports only when the risk is High or Critical
 - skip common static assets and generated dependency folders during batch analysis
 - validate and reload IOC lists without changing the source code
+- **clear all analysis history and reports via CLI (`--clear-history`) or GUI buttons (History/Reports views)**
+- **clear the persistent analysis cache via CLI (`--include-cache`) or automatically after batch completion**
+- use the first dashboard interface to select files, run scans, monitor engines, and inspect results
 
 ---
 
@@ -103,6 +109,11 @@ CERBERUS/
 │   └── suspect_strings.txt
 ├── modules/
 │   ├── colors.py
+│   ├── gui.py
+│   ├── analysis_cache.py
+│   ├── analysis_config.py
+│   ├── analysis_events.py
+│   ├── file_metrics.py
 │   ├── entropy.py
 │   ├── hashes.py
 │   ├── magic_numbers.py
@@ -118,6 +129,9 @@ CERBERUS/
 ```
 
 - `analyzer.py` is the entrypoint and orchestrates analysis flow.
+- `modules/gui.py` provides the first Tkinter dashboard without duplicating analysis logic.
+- `modules/analysis_events.py` defines lifecycle events consumed by the dashboard and future interfaces.
+- `modules/analysis_cache.py` stores reusable results for repeated scans.
 - `modules/` contains each analysis engine and utilities.
 - `iocs/` stores local indicators for blacklist and suspicious string matching.
 - `reports/` is the output folder for JSON, CSV, and HTML report files.
@@ -209,6 +223,7 @@ CLI options:
 
 - `--full`: run all analysis engines.
 - `--quick`: run the local blacklist and file-type checks.
+- `--clear-history`: delete all analysis reports and history files.
 - `--no-virustotal`: disable VirusTotal requests.
 - `--report all|json|csv|html`: choose generated report formats.
 - `--output PATH`: choose the report directory.
@@ -216,6 +231,24 @@ CLI options:
 - `--workers N`: configure concurrent workers for batch analysis.
 - `--no-cache`: disable the persistent SQLite analysis cache.
 - `--max-file-size BYTES`: skip files larger than the configured limit.
+- `--include-cache`: also clear the analysis cache when using `--clear-history`.
+
+### Terminal-only execution
+
+CERBERUS can run entirely from the terminal without opening the Tkinter dashboard. Provide the target file as the first argument and select a scan profile:
+
+```bash
+# Complete terminal analysis
+python analyzer.py sample.exe --full
+
+# Quick terminal analysis without VirusTotal
+python analyzer.py sample.exe --quick --no-virustotal
+
+# Automation-friendly output with no animation
+python analyzer.py sample.exe --full --no-virustotal --quiet
+```
+
+Terminal-only mode is intended for scripts, CI jobs, remote sessions, and environments without a graphical display. It writes the selected reports to the directory passed with `--output` and returns a non-interactive summary containing the risk level and execution time.
 
 Without a file argument, CERBERUS retains the interactive menu and graphical file selector. During normal analysis and batch scans, each enabled engine reports its execution time and the final result includes total duration.
 
@@ -223,9 +256,35 @@ While an engine is running, the terminal displays an animated progress bar with 
 
 Interactive output includes a red CERBERUS identity banner, `[>]` engine-start states, `[OK]` completion states, and a final summary divided into `VERDICT`, `EVIDENCE`, and `IDENTITY`, with deliberate spacing between analysis blocks.
 
-Batch analysis uses configurable workers and a persistent cache keyed by file metadata, enabled engines, and analyzer version. Repeated scans can reuse previous results when the file and configuration are unchanged. When SHA-256 and entropy are both enabled, their reusable byte metrics are collected in one streaming pass.
+Batch analysis uses configurable workers and a persistent cache keyed by file metadata, enabled engines, and analyzer version. The dashboard batch uses a bounded pool of up to four workers, avoids CSV/HTML generation for every low-risk file, and writes individual JSON reports only at the configured risk threshold. Repeated scans can reuse previous results when the file and configuration are unchanged. When SHA-256 and entropy are both enabled, their reusable byte metrics are collected in one streaming pass.
+
+**Performance improvements**: Large batch scans now use **chunked processing** (batches of `workers × 4` files) to prevent memory exhaustion and UI freezing. The analysis cache uses **SQLite WAL mode** with thread-local connections for concurrent access without locking contention. Cache connections are properly closed after batch completion.
 
 The analysis core emits structured `AnalysisEvent` values for file and engine lifecycle changes. Future interfaces can subscribe to these events without parsing terminal output.
+
+### First dashboard interface
+
+Running `python analyzer.py` opens the initial Tkinter dashboard. Its layout follows the CERBERUS identity:
+
+- `IDENTITY`: file name, type, extension, compatibility, hash, and size.
+- `EVIDENCE`: engine states, progress, and execution times.
+- `VERDICT`: risk level, score, factors, and report path.
+
+The dashboard runs analysis in a background thread so the window remains responsive. It is a first functional interface; batch controls, history navigation, and richer report exploration remain future interface work. CLI mode is unchanged for scripts and automation.
+
+The first interface stage also defines the visual lifecycle used by future screens: `QUEUED`, `RUNNING`, `COMPLETE`, `SKIPPED`, `FAILED`, and `CACHED`. The three-stage indicator follows `IDENTITY -> EVIDENCE -> VERDICT`, while the identity panel exposes the full path and a copy action for SHA-256.
+
+### Evidence exploration
+
+The Evidence panel now keeps an `Overview` tab for live engine progress and provides focused tabs for `Strings`, `IOCs`, `PE`, `Entropy`, and `Reputation` after analysis completes. These tabs distinguish observed data from contextual indicators such as high entropy or packer signatures, while preserving the main three-panel layout.
+
+### Application flows
+
+The dashboard navigation now includes `New Analysis`, `Batch Scan`, `History`, `Reports`, `IOC Lists`, and `Settings`. Batch Scan runs files in the background and reports completion, risk, duration, cache hits, and failures incrementally. History reads previous JSON summaries, Reports lists generated artifacts, and IOC Lists reuses the existing integrity checks. These are the first operational flows; deeper report comparison and filtering remain future polish.
+
+### Interface polish
+
+The dashboard includes lightweight interaction polish without turning the forensic workflow into decoration: tooltips on controls, keyboard shortcuts (`Ctrl+O`, `F5`, and `Ctrl+Enter`), hover cursors, semantic compatibility colors, a subtle running-stage pulse, and a staggered verdict-factor reveal. Motion is disabled from the analysis data path and does not alter CLI or `--quiet` behavior.
 
 The application opens a file picker. After selecting a target file, choose one of the scan profiles:
 
@@ -238,9 +297,14 @@ The application opens a file picker. After selecting a target file, choose one o
   6 - IOC Lists Integrity
 ```
 
-Select `4` to browse reports already stored in `reports/`. The history view can be filtered by file name, SHA-256 hash, or risk level, and displays the analysis date, risk score, hash, and report path.
+Select `4` to browse reports already stored in `reports/`. The history view can be filtered by file name, SHA-256 hash, or risk level, and displays the analysis date, risk score, hash, and report path. A **Clear History** button deletes all JSON report files (with confirmation).
 
 Select `5` to choose a folder. CERBERUS recursively analyzes relevant files using the Full Scan profile, but only generates individual JSON, CSV, and HTML reports when the risk score reaches `50/100` (`High` or `Critical`). Lower-risk files are still included in the analysis summary without creating individual reports. The batch consults VirusTotal only when local indicators are present, which avoids spending API quota on routine files. The `batch_summary_<timestamp>.json` file contains totals, risk-level counts, generated reports, risk-filtered reports, failures, skipped files, and report references. Common assets such as images, fonts, audio, and video are skipped by default, as are `.git`, `.venv`, `__pycache__`, and `node_modules` directories.
+
+**Large folder handling**: Batch scans now process files in chunks to maintain responsiveness with thousands of files. Progress updates are emitted per file, and the UI remains interactive during analysis.
+
+The **Reports** navigation tab lists all generated artifacts (JSON, CSV, HTML). A **Clear Reports** button removes all report files including batch summaries (with confirmation).
+
 
 Select `6` to validate the IOC files. `iocs/blacklist.txt` accepts one SHA-256 hash per line, with optional `#` comments. `iocs/suspect_strings.txt` accepts one suspicious term per line. Invalid hashes, empty terms, and malformed entries are ignored during analysis and reported by this menu option. Both files are reloaded from disk for every analysis, so updating them does not require a code change or restart.
 
@@ -348,6 +412,14 @@ VirusTotal requests use a 15-second timeout and are skipped when `VT_API_KEY` is
 - Implements Full Scan, Quick Scan, and Custom Scan modes.
 - Maps user choices to engine activation flags consumed by `analyzer.py`.
 
+### `modules/analysis_cache.py`
+
+- Persistent SQLite cache with **WAL (Write-Ahead Logging) mode** for concurrent read/write access.
+- **Thread-local connections** prevent lock contention in multi-threaded batch scans.
+- Cache keys include file metadata, enabled engines, and analyzer version for correctness.
+- Configurable via `--no-cache` (CLI) or `cache_enabled` (config dict).
+- Automatic cleanup with `close()` after batch completion.
+
 ---
 
 ## 🔬 Technical Concepts
@@ -444,6 +516,7 @@ pip install pefile
 - requests
 - python-dotenv
 - JSON
+- SQLite (WAL mode for concurrent cache access)
 - Windows file handling
 
 ---

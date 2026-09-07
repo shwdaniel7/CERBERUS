@@ -293,3 +293,39 @@ def save_batch_summary(folder_path, results, duration_seconds, reports_folder="r
     with open(json_path, "w", encoding="utf-8") as summary_file:
         json.dump(summary, summary_file, indent=4, ensure_ascii=False)
     return json_path
+
+
+def clear_history(reports_folder="reports", include_cache=False):
+    """Clear all analysis reports and optionally the cache."""
+    if not os.path.isdir(reports_folder):
+        return {"deleted": 0, "errors": [], "cache_cleared": False}
+
+    deleted = 0
+    errors = []
+
+    report_patterns = (".json", ".csv", ".html")
+    cache_file = os.path.join(reports_folder, ".cerberus-cache.sqlite3")
+
+    for filename in os.listdir(reports_folder):
+        filepath = os.path.join(reports_folder, filename)
+        try:
+            if filename.endswith(report_patterns) or filename.startswith("batch_summary_"):
+                os.remove(filepath)
+                deleted += 1
+            elif include_cache and filename == ".cerberus-cache.sqlite3":
+                os.remove(filepath)
+                deleted += 1
+        except OSError as e:
+            errors.append(f"{filename}: {e}")
+
+    cache_cleared = False
+    if include_cache and os.path.exists(cache_file):
+        try:
+            os.remove(cache_file)
+            cache_cleared = True
+        except OSError as e:
+            errors.append(f"cache: {e}")
+    elif include_cache and not os.path.exists(cache_file):
+        cache_cleared = True
+
+    return {"deleted": deleted, "errors": errors, "cache_cleared": cache_cleared}

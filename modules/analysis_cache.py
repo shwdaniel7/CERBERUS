@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import threading
 from typing import Any
 
 
@@ -10,10 +11,17 @@ class AnalysisCache:
         os.makedirs(directory, exist_ok=True)
         self.path = os.path.join(directory, ".cerberus-cache.sqlite3")
         self.analyzer_version = analyzer_version
+        self._local = threading.local()
         self._initialize()
 
     def _connect(self):
-        return sqlite3.connect(self.path, timeout=30)
+        if not hasattr(self._local, "connection") or self._local.connection is None:
+            conn = sqlite3.connect(self.path, timeout=30, check_same_thread=False)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA cache_size=-8192")
+            self._local.connection = conn
+        return self._local.connection
 
     def _initialize(self):
         with self._connect() as connection:
@@ -45,11 +53,11 @@ class AnalysisCache:
 
     def get(self, filepath, config):
         cache_key, stat = self._key(filepath, config)
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT result_json FROM analysis_cache WHERE cache_key = ?",
-                (cache_key,),
-            ).fetchone()
+        conn = self._connect()
+        row = conn.execute(
+            "SELECT result_json FROM analysis_cache WHERE cache_key = ?",
+            (cache_key,),
+        ).fetchone()
         if not row:
             return None
         result = json.loads(row[0])
@@ -60,13 +68,19 @@ class AnalysisCache:
         cache_key, stat = self._key(filepath, config)
         cached_result = dict(result)
         cached_result["cache_hit"] = False
-        with self._connect() as connection:
-            connection.execute(
-                """
-                INSERT OR REPLACE INTO analysis_cache
-                (cache_key, filepath, file_size, modified_ns, result_json)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (cache_key, os.path.abspath(filepath), stat.st_size, stat.st_mtime_ns,
-                 json.dumps(cached_result, ensure_ascii=False)),
-            )
+        conn = self._connect()
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO analysis_cache
+            (cache_key, filepath, file_size, modified_ns, result_json)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (cache_key, os.path.abspath(filepath), stat.st_size, stat.st_mtime_ns,
+             json.dumps(cached_result, ensure_ascii=False)),
+        )
+        conn.commit()
+
+    def close(self):
+        if hasattr(self._local, "connection") and self._local.connection:
+            self._local.connection.close()
+            self._local.connection = None
