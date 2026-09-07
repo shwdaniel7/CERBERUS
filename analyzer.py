@@ -394,6 +394,8 @@ def analyze_file(selected_file, config, show_details=True):
             "packers": packer_analysis,
             "pe_analysis": pe_analysis,
             "virustotal": result_vt,
+            "blacklist_match": bool(in_blacklist),
+            "magic_alert": magic_alert,
         },
     }
     emit_event(config, AnalysisEvent(

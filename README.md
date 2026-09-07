@@ -250,6 +250,10 @@ The dashboard runs analysis in a background thread so the window remains respons
 
 The first interface stage also defines the visual lifecycle used by future screens: `QUEUED`, `RUNNING`, `COMPLETE`, `SKIPPED`, `FAILED`, and `CACHED`. The three-stage indicator follows `IDENTITY -> EVIDENCE -> VERDICT`, while the identity panel exposes the full path and a copy action for SHA-256.
 
+### Evidence exploration
+
+The Evidence panel now keeps an `Overview` tab for live engine progress and provides focused tabs for `Strings`, `IOCs`, `PE`, `Entropy`, and `Reputation` after analysis completes. These tabs distinguish observed data from contextual indicators such as high entropy or packer signatures, while preserving the main three-panel layout.
+
 The application opens a file picker. After selecting a target file, choose one of the scan profiles:
 
 ```text

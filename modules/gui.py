@@ -142,8 +142,27 @@ class CerberusApp(tk.Tk):
             self.stage_labels[stage] = label
         self.progress = ttk.Progressbar(self.evidence_panel, style="Accent.Horizontal.TProgressbar", maximum=1, value=0)
         self.progress.pack(fill="x", pady=(8, 16))
+        self.evidence_notebook = ttk.Notebook(self.evidence_panel)
+        self.evidence_notebook.pack(fill="both", expand=True)
+
+        overview_tab = ttk.Frame(self.evidence_notebook, style="Panel.TFrame", padding=(4, 8))
+        self.evidence_notebook.add(overview_tab, text="Overview")
+        self._build_engine_table(overview_tab)
+
+        self.evidence_tabs = {}
+        for tab_name in ("Strings", "IOCs", "PE", "Entropy", "Reputation"):
+            tab = ttk.Frame(self.evidence_notebook, style="Panel.TFrame", padding=8)
+            tab.columnconfigure(0, weight=1)
+            tab.rowconfigure(1, weight=1)
+            self.evidence_notebook.add(tab, text=tab_name)
+            ttk.Label(tab, text="No analysis data yet.", style="Muted.TLabel").grid(row=0, column=0, sticky="w", pady=(0, 8))
+            text = tk.Text(tab, background=COLORS["surface"], foreground=COLORS["text"], insertbackground=COLORS["text"], relief="flat", borderwidth=0, wrap="word", font=("Consolas", 9), state="disabled")
+            text.grid(row=1, column=0, sticky="nsew")
+            self.evidence_tabs[tab_name] = (tab, text)
+
+    def _build_engine_table(self, parent):
         columns = ("status", "engine", "detail")
-        self.evidence_tree = ttk.Treeview(self.evidence_panel, columns=columns, show="headings", height=15)
+        self.evidence_tree = ttk.Treeview(parent, columns=columns, show="headings", height=15)
         self.evidence_tree.heading("status", text="STATE")
         self.evidence_tree.heading("engine", text="ENGINE")
         self.evidence_tree.heading("detail", text="DETAIL")
@@ -327,6 +346,72 @@ class CerberusApp(tk.Tk):
         for factor in risk["factors"]:
             self.factors_text.insert("end", f"> {factor}\n\n")
         self.factors_text.configure(state="disabled")
+        self._render_evidence(result)
+
+    def _set_evidence_text(self, tab_name, heading, lines):
+        _, text = self.evidence_tabs[tab_name]
+        text.configure(state="normal")
+        text.delete("1.0", "end")
+        text.insert("end", f"{heading}\n\n")
+        text.insert("end", "\n".join(lines) if lines else "No evidence collected.")
+        text.configure(state="disabled")
+
+    def _render_evidence(self, result):
+        details = result.get("details", {})
+        alerts = details.get("alerts", [])
+        strings_count = details.get("strings_count", 0)
+        self._set_evidence_text(
+            "Strings",
+            "OBSERVED / EMBEDDED STRINGS",
+            [f"Extracted strings: {strings_count}", "", *[f"[SUSPICIOUS] {alert}" for alert in alerts]],
+        )
+
+        iocs = details.get("iocs", {}) or {}
+        ioc_lines = []
+        for category, values in iocs.items():
+            if values:
+                ioc_lines.append(f"{category.upper()} ({len(values)})")
+                ioc_lines.extend(f"  {value}" for value in values)
+                ioc_lines.append("")
+        self._set_evidence_text("IOCs", "OBSERVED / STRUCTURED INDICATORS", ioc_lines)
+
+        pe = details.get("pe_analysis", {}) or {}
+        pe_lines = [
+            f"Status: {pe.get('status', 'not executed')}",
+            f"PE signature: {pe.get('has_pe_signature', 'not available')}",
+            f"Sections: {pe.get('number_of_sections', 0)}",
+        ]
+        for section in pe.get("sections", []):
+            pe_lines.append(
+                f"{section.get('name', '?')} | raw {section.get('raw_size', 0)} | "
+                f"virtual {section.get('virtual_size', 0)} | entropy {section.get('entropy', 0)}"
+            )
+        self._set_evidence_text("PE", "OBSERVED / PE STRUCTURE", pe_lines)
+
+        entropy_lines = [
+            f"Score: {details.get('entropy_score', 'not executed')}",
+            f"Status: {details.get('entropy_status', 'not executed')}",
+        ]
+        packers = details.get("packers", {}) or {}
+        if packers.get("detected"):
+            entropy_lines.append("",)
+            entropy_lines.extend(f"[CONTEXT] {name}: {', '.join(values)}" for name, values in packers.get("packers", {}).items())
+        entropy_lines.append("")
+        entropy_lines.append("High entropy and packing are contextual indicators, not proof of malware.")
+        self._set_evidence_text("Entropy", "CONTEXT / ENTROPY AND PACKERS", entropy_lines)
+
+        vt = details.get("virustotal", {}) or {}
+        reputation_lines = [
+            f"VirusTotal: {vt.get('status', 'not executed')}",
+            vt.get("message", "No VirusTotal result."),
+            f"Malicious: {vt.get('malicious', 0)}",
+            f"Suspicious: {vt.get('suspicious', 0)}",
+            f"Harmless: {vt.get('harmless', 0)}",
+            f"Undetected: {vt.get('undetected', 0)}",
+            "",
+            f"Local blacklist: {'MATCH' if details.get('blacklist_match') else 'No match'}",
+        ]
+        self._set_evidence_text("Reputation", "REPUTATION / EXTERNAL CONTEXT", reputation_lines)
 
     def _risk_color(self, level):
         return {"Critical": COLORS["red"], "High": COLORS["red"], "Moderate": COLORS["yellow"], "Low": COLORS["green"]}.get(level, COLORS["muted"])
@@ -348,6 +433,11 @@ class CerberusApp(tk.Tk):
         self.factors_text.configure(state="normal")
         self.factors_text.delete("1.0", "end")
         self.factors_text.configure(state="disabled")
+        for _, text in self.evidence_tabs.values():
+            text.configure(state="normal")
+            text.delete("1.0", "end")
+            text.insert("end", "No analysis data yet.")
+            text.configure(state="disabled")
 
     def _set_stage(self, stage, state):
         symbols = {"QUEUED": "○", "RUNNING": "●", "COMPLETE": "✓", "FAILED": "✕"}
