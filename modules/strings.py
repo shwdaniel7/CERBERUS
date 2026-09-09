@@ -20,21 +20,38 @@ BENIGN_TERMS = {
     "re",
 }
 
+_ASCII_PATTERN = re.compile(rb"[A-Za-z0-9/\\\-.:_]{4,}")
+_UTF16_PATTERN = re.compile(rb"(?:[^\x00-\x1f\x7f-\x9f]\x00){4,}")
 
-def _term_matches(text, term):
-    pattern = rf"(?<![A-Za-z0-9_]){re.escape(term)}(?![A-Za-z0-9_])"
-    return re.search(pattern, text, re.IGNORECASE) is not None
+
+def _build_suspect_pattern(suspect_terms):
+    """Compile the suspect terms into a single alternation regex.
+
+    Returns ``(pattern, ordered_terms)`` or ``None`` when no term survives
+    the benign filter. One regex scan covers every term instead of compiling
+    one regex per term per string.
+    """
+    terms = []
+    for term in suspect_terms:
+        normalized = term.strip()
+        if not normalized or normalized.lower() in BENIGN_TERMS:
+            continue
+        terms.append(normalized)
+    if not terms:
+        return None
+    ordered_terms = sorted(set(terms), key=len, reverse=True)
+    body = "|".join(re.escape(term) for term in ordered_terms)
+    pattern = re.compile(rf"(?<![A-Za-z0-9_])(?:{body})(?![A-Za-z0-9_])", re.IGNORECASE)
+    return pattern, ordered_terms
 
 
 def _extract_strings(binary_content):
-    ascii_pattern = re.compile(rb"[A-Za-z0-9/\\\-.:_]{4,}")
-    utf16_pattern = re.compile(rb"(?:[^\x00-\x1f\x7f-\x9f]\x00){4,}")
     extracted = []
 
-    for match in ascii_pattern.finditer(binary_content):
+    for match in _ASCII_PATTERN.finditer(binary_content):
         extracted.append(match.group().decode("ascii", errors="ignore"))
 
-    for match in utf16_pattern.finditer(binary_content):
+    for match in _UTF16_PATTERN.finditer(binary_content):
         text = match.group().decode("utf-16le", errors="ignore").strip()
         if text:
             extracted.append(text)
@@ -42,22 +59,26 @@ def _extract_strings(binary_content):
     return list(dict.fromkeys(extracted))
 
 
-def strings(filepath):
-    suspect_terms, _, db_path = load_suspect_terms()
-    filtered_strings = []
+def strings(filepath, content=None):
+    suspect_terms, _, _ = load_suspect_terms()
+    built = _build_suspect_pattern(suspect_terms)
+
+    if content is None:
+        with open(filepath, "rb") as f:
+            binary_content = f.read()
+    else:
+        binary_content = content
+
+    filtered_strings = _extract_strings(binary_content)
     found_alerts = []
-
-    with open(filepath, "rb") as f:
-        binary_content = f.read()
-
-        filtered_strings = _extract_strings(binary_content)
+    if built:
+        pattern, ordered_terms = built
         for text in filtered_strings:
-
-            for term in suspect_terms:
-                normalized_term = term.strip().lower()
-                if normalized_term in BENIGN_TERMS:
-                    continue
-                if _term_matches(text, term):
+            matched_terms = {match.group(0) for match in pattern.finditer(text)}
+            if not matched_terms:
+                continue
+            for term in ordered_terms:
+                if term in matched_terms:
                     found_alerts.append(
                         f"Suspect term found: '{text}'. Trigger: '{term}'."
                     )

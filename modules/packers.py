@@ -13,10 +13,17 @@ PACKER_SIGNATURES = {
 }
 
 
-def detect_packers(filepath):
-    """Detect known packer signatures and return evidence, not a malware verdict."""
-    with open(filepath, "rb") as file_handle:
-        data = file_handle.read()
+def detect_packers(filepath, content=None):
+    """Detect known packer signatures and return evidence, not a malware verdict.
+
+    Accepts an optional ``content`` byte buffer (from a shared single read);
+    otherwise the file is opened directly.
+    """
+    if content is None:
+        with open(filepath, "rb") as file_handle:
+            data = file_handle.read()
+    else:
+        data = content
 
     detected = {}
     for packer_name, signatures in PACKER_SIGNATURES.items():
@@ -25,7 +32,7 @@ def detect_packers(filepath):
             matches = signature.findall(data)
             evidence.extend(
                 match.decode("ascii", errors="replace")
-                if isinstance(match, bytes) else match
+                if isinstance(match, (bytes, bytearray, memoryview)) else match
                 for match in matches
             )
         if evidence:

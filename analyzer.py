@@ -10,13 +10,11 @@ from modules.ioc_extract import extract_iocs, count_iocs
 from modules.packers import detect_packers
 from modules.pe_analysis import analyze_pe
 from modules.hashes import calc_sha256, check_local_blacklist, virustotal_available, virustotal_check
-from modules.iocs import print_ioc_integrity
 from modules.reports import list_analysis_history, save_batch_summary, clear_history, save_report
 from modules.risk import calculate_risk
-from modules.menu import optionsMenu
 from modules.analysis_cache import AnalysisCache
 from modules.analysis_events import AnalysisEvent, emit_event
-from modules.file_metrics import collect_file_metrics
+from modules.file_metrics import read_analysis_buffer
 from modules.reports import CERBERUS_VERSION
 from modules.colors import (
     paint_red, paint_green, paint_yellow, paint_cyan, paint_bold,
@@ -115,19 +113,6 @@ class ProgressTracker:
         self.current_engine = "Analysis complete"
         self._render(final=True)
 
-def uploadFile():
-    from tkinter.filedialog import askopenfilename
-    filepath = askopenfilename(
-        title="Select a file", initialdir="C:/", filetypes=[("All", "*.*")]
-    )
-    return filepath
-
-
-def upload_folder():
-    from tkinter.filedialog import askdirectory
-    return askdirectory(title="Select a folder to analyze", initialdir="C:/")
-
-
 def print_banner():
     frame = paint_red
     print(frame("\n+--------------------------------------------------+"))
@@ -155,11 +140,14 @@ def analyze_file(selected_file, config, show_details=True):
         )
 
     cache = config.get("_cache")
+    cache_key = None
+    cache_stat = None
     if cache is None and config.get("cache_enabled", True):
         cache = AnalysisCache(config.get("output_dir", "reports"), CERBERUS_VERSION)
         config["_cache"] = cache
     if cache:
-        cached_result = cache.get(selected_file, config)
+        cache_key, cache_stat = cache.key_for(selected_file, config)
+        cached_result = cache.get(selected_file, config, cache_key=cache_key)
         if cached_result and (not cached_result.get("report") or os.path.exists(cached_result["report"])):
             emit_event(config, AnalysisEvent(
                 "file_completed", selected_file, status="cached", progress=1.0,
@@ -194,6 +182,7 @@ def analyze_file(selected_file, config, show_details=True):
     packer_analysis = {"detected": False, "packers": {}, "note": "Not executed"}
     pe_analysis = {"status": "not_executed", "sections": []}
     shared_metrics = None
+    shared_content = None
 
     engine_times = {}
     enabled_engines = sum((
@@ -233,8 +222,11 @@ def analyze_file(selected_file, config, show_details=True):
         if show_details:
             print_section("Identity")
             print(paint_dim("  Generating SHA-256 signature"))
-        if config["entropy"]:
-            shared_metrics = collect_file_metrics(selected_file)
+        if config["entropy"] or config["strings"] or config.get("ioc_extract"):
+            if shared_content is None and shared_metrics is None:
+                shared_content, shared_metrics = read_analysis_buffer(
+                    selected_file, compute_histogram=config["entropy"]
+                )
             hash_result = shared_metrics["sha256"]
         else:
             hash_result = calc_sha256(selected_file)
@@ -274,7 +266,11 @@ def analyze_file(selected_file, config, show_details=True):
 
     if config["entropy"]:
         engine_started = engine_start("Entropy and packers")
-        packer_analysis = detect_packers(selected_file)
+        if shared_content is None and shared_metrics is None:
+            shared_content, shared_metrics = read_analysis_buffer(
+                selected_file, compute_histogram=True
+            )
+        packer_analysis = detect_packers(selected_file, content=shared_content)
         if show_details:
             print_section("Entropy and Packers")
         from modules.entropy import calculate_entropy
@@ -294,7 +290,11 @@ def analyze_file(selected_file, config, show_details=True):
         engine_started = engine_start("Strings")
         if show_details:
             print_section("Embedded Strings")
-        all_strings, alerts = strings(selected_file)
+        if shared_content is None and shared_metrics is None:
+            shared_content, shared_metrics = read_analysis_buffer(
+                selected_file, compute_histogram=config["entropy"]
+            )
+        all_strings, alerts = strings(selected_file, content=shared_content)
         if show_details:
             print(f"Total of strings: {paint_yellow(len(all_strings))}")
             print(f"Alerts found: {paint_red(len(alerts)) if alerts else paint_green('0')}")
@@ -319,14 +319,18 @@ def analyze_file(selected_file, config, show_details=True):
         engine_started = engine_start("IOC extraction")
         if show_details:
             print_section("Structured IOCs")
-        extracted_iocs = extract_iocs(selected_file)
+        if shared_content is None and shared_metrics is None:
+            shared_content, shared_metrics = read_analysis_buffer(
+                selected_file, compute_histogram=config["entropy"]
+            )
+        extracted_iocs = extract_iocs(selected_file, content=shared_content)
         if show_details:
             print(f"Extracted IOC values: {paint_yellow(count_iocs(extracted_iocs))}")
             for category, values in extracted_iocs.items():
                 if values:
                     print(f"  -> {category}: {paint_yellow(len(values))}")
             print()
-            engine_done("IOC extraction", engine_started)
+        engine_done("IOC extraction", engine_started)
 
     suspicious_locally = bool(
         in_blacklist
@@ -403,7 +407,7 @@ def analyze_file(selected_file, config, show_details=True):
         elapsed_seconds=analysis_duration, data=result,
     ))
     if cache:
-        cache.put(selected_file, config, result)
+        cache.put(selected_file, config, result, cache_key=cache_key, cache_stat=cache_stat)
     return result
 
 
