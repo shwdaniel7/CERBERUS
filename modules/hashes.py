@@ -3,6 +3,7 @@ import requests
 import os
 from dotenv import load_dotenv
 from modules.iocs import load_blacklist
+from modules.file_metrics import CHUNK_SIZE
 
 load_dotenv()
 
@@ -13,7 +14,7 @@ def calc_sha256(filepath):
     sha256_hash = hashlib.sha256()
 
     with open(filepath, "rb") as f:
-        for byte_block in iter(lambda: f.read(4096), b""):
+        for byte_block in iter(lambda: f.read(CHUNK_SIZE), b""):
             sha256_hash.update(byte_block)
 
     return sha256_hash.hexdigest()
