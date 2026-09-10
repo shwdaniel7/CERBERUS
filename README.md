@@ -47,7 +47,7 @@ CERBERUS is a Python-based static malware analysis toolkit designed to inspect s
 
 The application is organized into small modules that separate user interaction, hashing, reputation checks, report generation, string analysis, entropy calculation, and header inspection.
 
-These modules are composed into a command-driven analyzer in `analyzer.py`, which uses Tkinter for file selection and a simple CLI menu for scan selection.
+These modules are composed into a command-driven analyzer in `analyzer.py`. With no arguments it opens the Tkinter dashboard; passing a file or folder with CLI flags runs non-interactive scans for automation.
 
 ---
 
@@ -58,14 +58,14 @@ CERBERUS implements interactive and automated scan profiles:
 | Profile | Enabled Engines | Report Output |
 |---|---|---|
 | Full Scan | Local blacklist, VirusTotal lookup, string IOC scan, Shannon entropy, magic number header check | JSON, CSV, and HTML reports |
-| Quick Scan | Local blacklist, magic number header check | No report |
+| Quick Scan | Local blacklist, magic number header check | JSON, CSV, and HTML reports |
 | Custom Scan | User-selected combination of all available engines | Optional JSON, CSV, and HTML reports |
 | Analysis History | Lists previous JSON reports with optional name, hash, or risk-level filtering | Terminal listing |
-| Batch Scan | Full Scan applied to every file in a selected folder with **chunked concurrency**, cache reuse, and optimized SQLite WAL cache | Risk-filtered JSON reports plus batch summary |
+| Batch Scan | Full Scan applied to every file in a selected folder with **parallel worker processes**, cache reuse, and an optimized SQLite WAL cache | Risk-filtered JSON reports plus batch summary |
 | IOC Lists Integrity | Validates local hashes and suspicious terms, reporting valid and malformed entries | Terminal listing |
 | **Clear History/Reports** | Delete all reports (JSON, CSV, HTML) and optionally the analysis cache | Terminal confirmation + GUI buttons |
 
-The default no-argument launch opens the first Tkinter dashboard. The dashboard organizes each analysis into `IDENTITY`, `EVIDENCE`, and `VERDICT`, while CLI mode remains available for automation.
+The default no-argument launch opens the Tkinter dashboard. The dashboard organizes each analysis into `IDENTITY`, `EVIDENCE`, and `VERDICT`, while CLI mode remains available for automation.
 
 The toolkit can:
 
@@ -89,7 +89,7 @@ The toolkit can:
 - skip common static assets and generated dependency folders during batch analysis
 - validate and reload IOC lists without changing the source code
 - **clear all analysis history and reports via CLI (`--clear-history`) or GUI buttons (History/Reports views)**
-- **clear the persistent analysis cache via CLI (`--include-cache`) or automatically after batch completion**
+- **clear the persistent analysis cache via CLI (`--clear-history --include-cache`) or checkpoint it automatically when a batch finishes**
 - use the first dashboard interface to select files, run scans, monitor engines, and inspect results
 
 ---
@@ -104,37 +104,47 @@ CERBERUS/
 ├── requirements.txt
 ├── .env
 ├── .gitignore
+├── docs/
+│   ├── gui/
+│   │   └── ISSUE_18_GUI_RESPONSIVENESS.md
+│   └── optimization/
+│       ├── BATCH_OPTIMIZATION.md
+│       └── P1-P5.md
 ├── iocs/
 │   ├── blacklist.txt
 │   └── suspect_strings.txt
 ├── modules/
-│   ├── colors.py
-│   ├── gui.py
 │   ├── analysis_cache.py
-│   ├── analysis_config.py
 │   ├── analysis_events.py
-│   ├── file_metrics.py
+│   ├── batch.py
+│   ├── colors.py
 │   ├── entropy.py
+│   ├── file_metrics.py
+│   ├── gui.py
 │   ├── hashes.py
+│   ├── ioc_extract.py
+│   ├── iocs.py
 │   ├── magic_numbers.py
-│   ├── menu.py
 │   ├── packers.py
 │   ├── pe_analysis.py
 │   ├── reports.py
 │   ├── risk.py
-│   ├── strings.py
-│   └── ioc_extract.py
-├── reports/
+│   └── strings.py
+└── reports/
+    └── .cerberus-cache.sqlite3 (created at runtime)
 
 ```
 
 - `analyzer.py` is the entrypoint and orchestrates analysis flow.
-- `modules/gui.py` provides the first Tkinter dashboard without duplicating analysis logic.
-- `modules/analysis_events.py` defines lifecycle events consumed by the dashboard and future interfaces.
-- `modules/analysis_cache.py` stores reusable results for repeated scans.
-- `modules/` contains each analysis engine and utilities.
+- `modules/gui.py` provides the Tkinter dashboard without duplicating analysis logic.
+- `modules/analysis_events.py` defines lifecycle events consumed by the dashboard and other interfaces.
+- `modules/analysis_cache.py` stores reusable results for repeated scans in an SQLite WAL database.
+- `modules/batch.py` runs folder scans across parallel worker processes and reuses the cache per worker.
+- `modules/iocs.py` loads and sanity-checks the local blacklist and suspicious-term lists.
+- `modules/` contains each analysis engine and utility.
 - `iocs/` stores local indicators for blacklist and suspicious string matching.
-- `reports/` is the output folder for JSON, CSV, and HTML report files.
+- `docs/` records the optimization and GUI work behind the project.
+- `reports/` is the output folder for JSON, CSV, and HTML report files; `.cerberus-cache.sqlite3` is created there at runtime.
 - `requirements.txt` contains the runtime dependencies used by the project.
 
 Modular separation keeps reputation checks, static analysis, and reporting isolated from the user interaction layer.
@@ -146,17 +156,15 @@ Modular separation keeps reputation checks, static analysis, and reporting isola
 ```text
 [Start] python analyzer.py
        │
-       ├─► File selection (Tkinter dialog)
+       ├─► Dashboard (Tkinter): New Analysis / Batch Scan / History / Reports / IOC Lists
+       │        │
+       │        └─► File selection
        │
-       ├─► Menu selection
-       │      ├─ Full Scan
-       │      ├─ Quick Scan
-      │      ├─ Custom Scan
-      │      └─ Batch Scan
-      │
-      ├─► Optional analysis history lookup
-      │
-      ├─► Optional folder analysis and batch summary
+       ├─► Scan profile (Full / Quick / Custom)
+       │
+       ├─► Optional analysis history lookup
+       │
+       ├─► Optional folder analysis and batch summary
        │
        ├─► Optional SHA-256 hash calculation
        │
@@ -169,12 +177,15 @@ Modular separation keeps reputation checks, static analysis, and reporting isola
        ├─► Optional Shannon entropy analysis
        │
        ├─► Optional suspicious string extraction
-      ├─► Optional URL/IP/domain/e-mail/path/command extraction
        │
-      ├─► Optional JSON, CSV, and HTML report generation
+       ├─► Optional URL/IP/domain/e-mail/path/command extraction
+       │
+       ├─► Optional JSON, CSV, and HTML report generation
        │
        └─► End
 ```
+
+Running `python analyzer.py <file-or-folder> --full` bypasses the dashboard and executes the same pipeline from the terminal.
 
 ---
 
@@ -212,12 +223,15 @@ Run the toolkit from the repository root:
 python analyzer.py
 ```
 
-The command above keeps the default Tkinter file selector. For automation, pass a file path and use CLI options; no graphical window is created:
+The command above opens the Tkinter dashboard. For automation, pass a file or folder path and use CLI options; no graphical window is created:
 
 ```bash
 python analyzer.py arquivo.exe --full
 python analyzer.py arquivo.exe --quick --no-virustotal --report html --output reports/ --quiet
+python analyzer.py ./samples/ --full
 ```
+
+Passing a folder runs the Batch Scan engine over every relevant file inside it. `--report` defaults to `all` (JSON, CSV, and HTML), and `--quick` scans still write reports for the engines they run.
 
 CLI options:
 
@@ -250,15 +264,15 @@ python analyzer.py sample.exe --full --no-virustotal --quiet
 
 Terminal-only mode is intended for scripts, CI jobs, remote sessions, and environments without a graphical display. It writes the selected reports to the directory passed with `--output` and returns a non-interactive summary containing the risk level and execution time.
 
-Without a file argument, CERBERUS retains the interactive menu and graphical file selector. During normal analysis and batch scans, each enabled engine reports its execution time and the final result includes total duration.
+Without a file argument, CERBERUS opens the graphical dashboard. During normal analysis and batch scans, each enabled engine reports its execution time and the final result includes total duration.
 
 While an engine is running, the terminal displays an animated progress bar with the completed percentage, spinner, active engine, engine elapsed time, and total elapsed time. Batch scans retain the per-file progress line and show the same engine-level bar for every selected file. Use `--quiet` to disable animation for log-friendly automation.
 
 Interactive output includes a red CERBERUS identity banner, `[>]` engine-start states, `[OK]` completion states, and a final summary divided into `VERDICT`, `EVIDENCE`, and `IDENTITY`, with deliberate spacing between analysis blocks.
 
-Batch analysis uses configurable workers and a persistent cache keyed by file metadata, enabled engines, and analyzer version. The dashboard batch uses a bounded pool of up to four workers, avoids CSV/HTML generation for every low-risk file, and writes individual JSON reports only at the configured risk threshold. Repeated scans can reuse previous results when the file and configuration are unchanged. When SHA-256 and entropy are both enabled, their reusable byte metrics are collected in one streaming pass.
+Batch analysis uses configurable workers and a persistent cache keyed by file metadata, enabled engines, and analyzer version. The dashboard batch uses a bounded pool of up to four worker processes, avoids CSV/HTML generation for every low-risk file, and writes individual JSON reports only at the configured risk threshold. Repeated scans can reuse previous results when the file and configuration are unchanged. When SHA-256 and entropy are both enabled, their reusable byte metrics are collected in one streaming pass.
 
-**Performance improvements**: Large batch scans now use **chunked processing** (batches of `workers × 4` files) to prevent memory exhaustion and UI freezing. The analysis cache uses **SQLite WAL mode** with thread-local connections for concurrent access without locking contention. Cache connections are properly closed after batch completion.
+**Performance improvements**: Large batch scans run in **separate worker processes** through a `ProcessPoolExecutor`, so CPU-heavy engines no longer contend on the Python GIL and the GUI stays responsive regardless of the number of files or workers. The analysis cache uses **SQLite WAL mode** with connections confined to each worker for concurrent access without locking contention. Cache connections are closed (WAL checkpoint) after batch completion.
 
 The analysis core emits structured `AnalysisEvent` values for file and engine lifecycle changes. Future interfaces can subscribe to these events without parsing terminal output.
 
@@ -270,7 +284,7 @@ Running `python analyzer.py` opens the initial Tkinter dashboard. Its layout fol
 - `EVIDENCE`: engine states, progress, and execution times.
 - `VERDICT`: risk level, score, factors, and report path.
 
-The dashboard runs analysis in a background thread so the window remains responsive. It is a first functional interface; batch controls, history navigation, and richer report exploration remain future interface work. CLI mode is unchanged for scripts and automation.
+The dashboard runs analysis in a background thread so the window remains responsive. It is an evolving interface; the operational flows described below (batch, history, reports, and IOC lists) build on the same lifecycle. CLI mode is unchanged for scripts and automation.
 
 The first interface stage also defines the visual lifecycle used by future screens: `QUEUED`, `RUNNING`, `COMPLETE`, `SKIPPED`, `FAILED`, and `CACHED`. The three-stage indicator follows `IDENTITY -> EVIDENCE -> VERDICT`, while the identity panel exposes the full path and a copy action for SHA-256.
 
@@ -286,54 +300,72 @@ The dashboard navigation now includes `New Analysis`, `Batch Scan`, `History`, `
 
 The dashboard includes lightweight interaction polish without turning the forensic workflow into decoration: tooltips on controls, keyboard shortcuts (`Ctrl+O`, `F5`, and `Ctrl+Enter`), hover cursors, semantic compatibility colors, a subtle running-stage pulse, and a staggered verdict-factor reveal. Motion is disabled from the analysis data path and does not alter CLI or `--quiet` behavior.
 
-The application opens a file picker. After selecting a target file, choose one of the scan profiles:
+On file selection the Identity panel is populated immediately with the name, extension, size, header-detected type, and compatibility, while the SHA-256 is computed in the background. The window enforces a `980x650` minimum and the path and hash text reflows when resized, so the layout never clips at small sizes.
 
-```text
-  1 - Full Scan (All checks + Report)
-  2 - Quick Scan (Local Blacklist + Header)
-  3 - Custom Scan (Choose your options)
-  4 - Analysis History
-  5 - Batch Scan (Full Scan on a folder)
-  6 - IOC Lists Integrity
-```
+The dashboard opens with a file picker. After selecting a target file, choose **Full Scan**, **Quick Scan**, or **Custom Scan** as the profile. The analysis runs in a background thread while each enabled engine reports its status, and the result fills the `IDENTITY`, `EVIDENCE`, and `VERDICT` panels.
 
-Select `4` to browse reports already stored in `reports/`. The history view can be filtered by file name, SHA-256 hash, or risk level, and displays the analysis date, risk score, hash, and report path. A **Clear History** button deletes all JSON report files (with confirmation).
+The **History** view lists previous JSON reports stored in `reports/`. It can be filtered by file name, SHA-256 hash, or risk level, and displays the analysis date, risk score, hash, and report path. A **Clear History** button deletes all JSON report files (with confirmation).
 
-Select `5` to choose a folder. CERBERUS recursively analyzes relevant files using the Full Scan profile, but only generates individual JSON, CSV, and HTML reports when the risk score reaches `50/100` (`High` or `Critical`). Lower-risk files are still included in the analysis summary without creating individual reports. The batch consults VirusTotal only when local indicators are present, which avoids spending API quota on routine files. The `batch_summary_<timestamp>.json` file contains totals, risk-level counts, generated reports, risk-filtered reports, failures, skipped files, and report references. Common assets such as images, fonts, audio, and video are skipped by default, as are `.git`, `.venv`, `__pycache__`, and `node_modules` directories.
+The **Batch Scan** flow chooses a folder. CERBERUS recursively analyzes relevant files using the Full Scan profile, but only generates individual JSON, CSV, and HTML reports when the risk score reaches `50/100` (`High` or `Critical`). Lower-risk files are still included in the analysis summary without creating individual reports. The batch consults VirusTotal only when local indicators are present, which avoids spending API quota on routine files. The `batch_summary_<timestamp>.json` file contains totals, risk-level counts, generated reports, risk-filtered reports, failures, skipped files, and report references. Common assets such as images, fonts, audio, and video are skipped by default, as are `.git`, `.venv`, `__pycache__`, and `node_modules` directories.
 
-**Large folder handling**: Batch scans now process files in chunks to maintain responsiveness with thousands of files. Progress updates are emitted per file, and the UI remains interactive during analysis.
+**Large folder handling**: Batch scans dispatch files across worker processes and emit progress per file, so the UI remains interactive even with thousands of files.
 
 The **Reports** navigation tab lists all generated artifacts (JSON, CSV, HTML). A **Clear Reports** button removes all report files including batch summaries (with confirmation).
 
-
-Select `6` to validate the IOC files. `iocs/blacklist.txt` accepts one SHA-256 hash per line, with optional `#` comments. `iocs/suspect_strings.txt` accepts one suspicious term per line. Invalid hashes, empty terms, and malformed entries are ignored during analysis and reported by this menu option. Both files are reloaded from disk for every analysis, so updating them does not require a code change or restart.
+The **IOC Lists** flow validates the IOC files. `iocs/blacklist.txt` accepts one SHA-256 hash per line, with optional `#` comments. `iocs/suspect_strings.txt` accepts one suspicious term per line. Invalid hashes, empty terms, and malformed entries are ignored during analysis and reported by this flow. Both files are reloaded from disk for every analysis, so updating them does not require a code change or restart.
 
 ### Example interaction
 
+Terminal output from a full CLI run:
+
 ```text
-[?] Select scan type (1-3): 1
-[*] Profiling: Full Scan selected. Activating all engines...
---- Generating file signature ---
-[+] SHA256: <hash>
---- Consulting local blacklist ---
-[+] Hash clean in local control list.
---- Querying VirusTotal API ---
-[->] VirusTotal: File not found or unknown in their database.
---- Verifying magic signature ---
-[+] Detected real type: Windows Executable (EXE/DLL)
---- Calculating Shannon entropy ---
-[+] Entropy score: 7.12/8.0
+$ python analyzer.py sample.exe --full
+
++--------------------------------------------------+
+| CERBERUS  /  STATIC MALWARE ANALYSIS ENGINE      |
+| Three heads. One purpose. Nothing gets past.      |
++--------------------------------------------------+
+
+[ TARGET ]
+  File   sample.exe
+  Size   145.06 KB
+
+[>] Starting SHA-256
+[+] SHA256: 24d004a104d4d540340c7831432f90a5...
+[OK] SHA-256 completed
+
+[>] Starting Local blacklist
+[+] Hash is clean in the local control list.
+[OK] Local blacklist completed
+
+[>] Starting File type and magic numbers
+[+] Declared Extension: .exe
+[+] Detected Type: Windows Executable (EXE/DLL)
+[+] Compatibility: Compatible
+[OK] File type and magic numbers completed
+
+[>] Starting Entropy and packers
+[+] Shannon Entropy Score: 7.12/8.0
 [->] Status: NORMAL: Low randomness (Standard readable code/text)
---- Analyzing file strings ---
-Total number of strings: 134
+[OK] Entropy and packers completed
+
+[>] Starting Strings
+Total of strings: 134
 Alerts found: 0
---- Risk Summary ---
-[!] Risk: Low (0/100)
-[+] Factors:
-  -> No risk indicators were detected
---- Exporting results ---
-[+] Dynamic report generated on: reports/report_filename_<shorthash>.json
+[OK] Strings completed
+
+[ ANALYSIS COMPLETE ]
+  [VERDICT]
+    Risk       Low (20/100)
+    Indicators 1
+    Duration   0.526s
+  [EVIDENCE]
+    > 1 suspicious string alert(s) (+4)
+  [IDENTITY]
+    Report      reports/report_sample.exe_24d004a1.json
 ```
+
+Add `--quiet` to collapse this into a single line: `sample.exe: Low (20/100) - 0.526s`.
 
 ---
 
@@ -343,7 +375,7 @@ Alerts found: 0
 
 - Responsible for ANSI terminal coloring.
 - Provides text wrappers for red, green, yellow, cyan, and bold output.
-- Used by `analyzer.py` and `modules/menu.py` to keep CLI output readable.
+- Used by `analyzer.py` to keep CLI output readable.
 
 ### `modules/hashes.py`
 
@@ -354,8 +386,8 @@ Alerts found: 0
 
 ### `modules/magic_numbers.py`
 
-- Reads the first 4 bytes of the file header.
-- Matches known magic signatures for EXE, ELF, PDF, PNG, GIF, JPEG, and ZIP/Office archive.
+- Reads a 32-byte window of the file header.
+- Matches magic signatures for Windows PE (EXE/DLL), ELF, PDF, PNG, GIF, JPEG, ZIP/OOXML, RAR, 7z, GZIP, BZIP2, XZ, HDF5, RIFF (WAV/AVI/WebP), MP3 (ID3), OGG, FLAC, and ICO.
 - Flags disguised Windows PE files when a non-executable extension is used.
 
 ### `modules/entropy.py`
@@ -375,7 +407,7 @@ Alerts found: 0
 
 - Analyzes `MZ` files with the optional `pefile` dependency.
 - Reports the `PE` signature, section count, section names, raw and virtual sizes, and entropy per section.
-- Returns `unavailable` when `pefile` is not installed and skips non-`MZ` files.
+- Returns a `not_executed` status when `pefile` is not installed and skips non-`MZ` files.
 - PE structure is descriptive evidence and does not add risk points by itself.
 
 ### File type and VirusTotal results
@@ -398,27 +430,32 @@ VirusTotal requests use a 15-second timeout and are skipped when `VT_API_KEY` is
 - Returns values grouped by category in the `ioc_extraction` report section.
 - Network indicators are collected as evidence and do not increase risk by themselves; suspicious paths and shell commands add only a small risk signal.
 
+### `modules/iocs.py`
+
+- Loads and validates `iocs/blacklist.txt` and `iocs/suspect_strings.txt` on every analysis.
+- Reports valid versus malformed entries for the IOC Lists integrity check without a code change or restart.
+
 ### `modules/reports.py`
 
 - Generates JSON, CSV, and HTML output under `reports/`.
-- JSON contains metadata, selected engines, signatures, VirusTotal results, entropy scores, detected file type, magic alerts, all extracted strings, and string alerts.
+- JSON contains metadata (including per-engine timings), selected engines, signatures, VirusTotal results, entropy scores, detected file type, magic alerts, IOC extraction, PE details, all extracted strings, string alerts, and the indicator count.
 - CSV provides a compact, one-row summary suitable for comparing analyzed files.
 - HTML provides a color-coded risk summary and collapsible sections for alerts, extracted strings, and technical analysis.
 - Creates the `reports/` folder if it does not exist.
 
-### `modules/menu.py`
+### `modules/batch.py`
 
-- Presents the CLI scan profile menu.
-- Implements Full Scan, Quick Scan, and Custom Scan modes.
-- Maps user choices to engine activation flags consumed by `analyzer.py`.
+- Collects candidate files from a folder and skips common assets, `.git`, `.venv`, `__pycache__`, and `node_modules`.
+- Runs each candidate through a worker process pool (`ProcessPoolExecutor`) with a configurable worker count and a thread-based fallback.
+- Provides per-file progress callbacks, a shared analysis cache per worker, and writes a `batch_summary_<timestamp>.json`.
 
 ### `modules/analysis_cache.py`
 
 - Persistent SQLite cache with **WAL (Write-Ahead Logging) mode** for concurrent read/write access.
-- **Thread-local connections** prevent lock contention in multi-threaded batch scans.
+- **Connections confined to each worker** prevent lock contention during batch scans.
 - Cache keys include file metadata, enabled engines, and analyzer version for correctness.
 - Configurable via `--no-cache` (CLI) or `cache_enabled` (config dict).
-- Automatic cleanup with `close()` after batch completion.
+- Connections are closed with `close()` (WAL checkpoint) after batch completion.
 
 ---
 
@@ -470,42 +507,83 @@ pip install pefile
     "extension": ".exe",
     "analysis_date": "2026-06-26 12:34:56",
     "cerberus_version": "1.0.0",
-    "analysis_duration_seconds": 0.526
+    "analysis_duration_seconds": 0.526,
+    "engine_times_seconds": {
+      "SHA-256": 0.021,
+      "Local blacklist": 0.002,
+      "File type and magic numbers": 0.004,
+      "Entropy and packers": 0.310,
+      "Strings": 0.087,
+      "PE sections": 0.011,
+      "IOC extraction": 0.023
+    }
   },
   "signatures": {
     "sha256": "24d004a104d4d540340c7831432f90a5..."
   },
   "virustotal_analysis": {
-    "virustotal": "Flagged by VirusTotal: 3/82 antivírus detectaram perigo."
+    "message": "Flagged by VirusTotal: 3/82 antivírus detectaram perigo.",
+    "malicious": 3,
+    "suspicious": 1,
+    "harmless": 74,
+    "undetected": 4
   },
   "statistics_analysis": {
     "blacklist_local": "Clean / Not found",
     "entropy_analysis": {
       "score": 7.12,
-      "status": "NORMAL: Low randomness (Standard readable code/text)"
+      "status": "INDICATOR: High randomness (Possible packer, encrypted or compressed data)",
+      "packer_context": {
+        "detected": true,
+        "packers": ["PyInstaller"]
+      }
     },
     "magic_number_analysis": {
+      "declared_extension": ".exe",
       "detected_type": "Windows Executable (EXE/DLL)",
-      "masquerade_alert": "None (Extension matches header)"
+      "compatibility": "Compatible",
+      "compatible": true,
+      "alert": null
     },
-    "all_strings": [
-      "kernel32",
-      "PowerShell"
-    ],
+    "ioc_extraction": {
+      "urls": ["https://malicious.example/dropper"],
+      "ip_addresses": ["203.0.113.10"],
+      "domains": [],
+      "emails": [],
+      "suspicious_paths": [],
+      "powershell_commands": ["rundll32.exe ..."],
+      "cmd_commands": []
+    },
+    "pe_analysis": {
+      "status": "analyzed",
+      "has_pe_signature": true,
+      "number_of_sections": 5,
+      "sections": [...]
+    },
     "total_alerts": 1,
     "alerts": [
-      "Suspect term found: 'kernel32'. Trigger: 'kernel32'."
-    ]
+      "Suspect term found: 'PowerShell'. Trigger: 'PowerShell'."
+    ],
+    "all_strings": [
+      "kernel32",
+      "PowerShell",
+      "..."
+    ],
+    "indicator_count": 6
   },
   "risk_summary": {
-    "score": 20,
+    "score": 34,
     "level": "Moderate",
     "factors": [
-      "1 suspicious string alert(s) (+4)"
+      "1 suspicious string alert(s) (+4)",
+      "IOC: 1 URL(s) extracted (+2)",
+      "High entropy INDICATOR (+5)"
     ]
   }
 }
 ```
+
+Engines disabled by the chosen profile appear as `"Not executed"` in their section.
 
 ---
 
