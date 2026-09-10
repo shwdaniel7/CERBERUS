@@ -9,6 +9,8 @@ from tkinter import filedialog, messagebox, ttk
 from modules.iocs import inspect_ioc_lists
 from modules.reports import save_batch_summary
 from modules.batch import collect_candidates, run_batch_analysis
+from modules.magic_numbers import analyze_file_type
+from modules.hashes import calc_sha256
 
 
 COLORS = {
@@ -74,7 +76,9 @@ class CerberusApp(tk.Tk):
         self.engine_states = {}
         self._pulse_jobs = {}
         self._result_reveal_job = None
-        self._result_reveal_job = None
+        self._identity_hash_thread = None
+        self._selected_hash = None
+        self._identity_wrap_widgets = []
         self.active_view = "analysis"
         self.view_widgets = {}
 
@@ -390,13 +394,22 @@ class CerberusApp(tk.Tk):
             row = ttk.Frame(self.identity_panel, style="Panel.TFrame")
             row.pack(fill="x", pady=6)
             ttk.Label(row, text=label, style="Muted.TLabel").pack(anchor="w")
-            value = ttk.Label(row, text="-", style="Body.TLabel", wraplength=260)
+            value = ttk.Label(row, text="-", style="Body.TLabel", wraplength=220)
             value.pack(anchor="w", pady=(2, 0))
             self.identity_values[key] = value
-        self.path_label = ttk.Label(self.identity_panel, text="Path: -", style="Muted.TLabel", wraplength=260)
+        self.path_label = ttk.Label(self.identity_panel, text="Path: -", style="Muted.TLabel", wraplength=220)
         self.path_label.pack(anchor="w", pady=(12, 4))
         self.copy_hash_button = ttk.Button(self.identity_panel, text="Copy SHA-256", command=self._copy_hash, style="Secondary.TButton")
         self.copy_hash_button.pack(anchor="w", pady=(4, 0))
+        self._identity_wrap_widgets = [value for value in self.identity_values.values()]
+        self._identity_wrap_widgets.append(self.path_label)
+        self.identity_panel.bind("<Configure>", self._fit_identity_wrap)
+
+    def _fit_identity_wrap(self, event=None):
+        width = (event.width if event else self.identity_panel.winfo_width()) - 24
+        wrap = min(520, max(140, width))
+        for widget in self._identity_wrap_widgets:
+            widget.configure(wraplength=wrap)
 
     def _build_evidence(self):
         self.progress_label = ttk.Label(self.evidence_panel, text="Waiting for analysis", style="Muted.TLabel")
@@ -434,9 +447,9 @@ class CerberusApp(tk.Tk):
         self.evidence_tree.heading("status", text="STATE")
         self.evidence_tree.heading("engine", text="ENGINE")
         self.evidence_tree.heading("detail", text="DETAIL")
-        self.evidence_tree.column("status", width=82, anchor="center", stretch=False)
-        self.evidence_tree.column("engine", width=150, anchor="w", stretch=False)
-        self.evidence_tree.column("detail", width=260, anchor="w")
+        self.evidence_tree.column("status", width=70, anchor="center", stretch=False)
+        self.evidence_tree.column("engine", width=130, anchor="w", stretch=False)
+        self.evidence_tree.column("detail", width=220, anchor="w")
         self.evidence_tree.tag_configure("running", foreground=COLORS["cyan"])
         self.evidence_tree.tag_configure("completed", foreground=COLORS["green"])
         self.evidence_tree.tag_configure("warning", foreground=COLORS["yellow"])
@@ -452,7 +465,7 @@ class CerberusApp(tk.Tk):
         self.score_label.pack(anchor="w")
         ttk.Separator(self.verdict_panel).pack(fill="x", pady=18)
         ttk.Label(self.verdict_panel, text="FACTORS", style="Muted.TLabel").pack(anchor="w")
-        self.factors_text = tk.Text(self.verdict_panel, height=12, background=COLORS["surface_alt"], foreground=COLORS["text"], insertbackground=COLORS["text"], relief="flat", borderwidth=0, wrap="word", font=("Segoe UI", 9), state="disabled")
+        self.factors_text = tk.Text(self.verdict_panel, height=12, width=2, background=COLORS["surface_alt"], foreground=COLORS["text"], insertbackground=COLORS["text"], relief="flat", borderwidth=0, wrap="word", font=("Segoe UI", 9), state="disabled")
         self.factors_text.pack(fill="both", expand=True, pady=(8, 0))
 
     def _choose_file(self):
@@ -461,10 +474,71 @@ class CerberusApp(tk.Tk):
             self.selected_file = filepath
             self.target_label.configure(text=filepath, foreground=COLORS["text"])
             self.status_label.configure(text="READY", foreground=COLORS["green"])
+            self._populate_identity(filepath)
+
+    def _populate_identity(self, filepath):
+        try:
+            size_bytes = os.path.getsize(filepath)
+        except OSError:
+            size_bytes = None
+        declared_extension = os.path.splitext(filepath)[1].lower() or "(none)"
+        self.identity_values["file"].configure(text=os.path.basename(filepath))
+        self.identity_values["extension"].configure(text=declared_extension)
+        self.identity_values["size"].configure(
+            text=f"{size_bytes:,} bytes" if size_bytes is not None else "Unavailable"
+        )
+        self.path_label.configure(text=self._format_path(filepath))
+
+        try:
+            file_type = analyze_file_type(filepath)
+            detected_type = file_type["detected_type"]
+            compatibility = file_type["compatibility"]
+        except OSError:
+            detected_type = "Unavailable"
+            compatibility = "Unknown"
+        self.identity_values["type"].configure(text=detected_type)
+        self.identity_values["compatibility"].configure(
+            text=compatibility,
+            foreground={
+                "Compatible": COLORS["green"],
+                "Mismatch": COLORS["red"],
+                "Unknown": COLORS["yellow"],
+            }.get(compatibility, COLORS["muted"]),
+        )
+
+        self.identity_values["hash"].configure(
+            text="Calculating...", foreground=COLORS["muted"], font=("Segoe UI", 9)
+        )
+        self._selected_hash = None
+        self._identity_hash_thread = threading.Thread(
+            target=self._compute_identity_hash, args=(filepath,), daemon=True
+        )
+        self._identity_hash_thread.start()
+
+    def _compute_identity_hash(self, filepath):
+        try:
+            value = calc_sha256(filepath)
+        except Exception:
+            value = None
+        self.events.put(("identity", filepath, "hash", value))
+
+    @staticmethod
+    def _chunk_hex(value, size=16):
+        return "\n".join(value[index:index + size] for index in range(0, len(value), size))
+
+    @staticmethod
+    def _format_path(filepath):
+        path = str(filepath)
+        if not path:
+            return "Path: -"
+        parts = path.replace("/", os.sep).split(os.sep)
+        return "Path: " + "\n".join(parts)
 
     def _copy_hash(self):
-        value = self.identity_values["hash"].cget("text")
-        if value and value not in ("-", "Not calculated"):
+        value = self._selected_hash
+        if not value:
+            value = self.identity_values["hash"].cget("text")
+        if value and value not in ("-", "Not calculated", "Calculating...", "Hash not available"):
             self.clipboard_clear()
             self.clipboard_append(value)
             self.status_label.configure(text="HASH COPIED", foreground=COLORS["cyan"])
@@ -579,6 +653,16 @@ class CerberusApp(tk.Tk):
 
     def _handle_result_event(self, event):
         kind = event[0]
+        if kind == "identity":
+            _, token, field, value = event
+            if token != self.selected_file or field != "hash":
+                return
+            if value:
+                self._selected_hash = value
+                self.identity_values["hash"].configure(text=self._chunk_hex(value), foreground=COLORS["text"], font=("Consolas", 8))
+            else:
+                self.identity_values["hash"].configure(text="Hash not available", foreground=COLORS["muted"], font=("Segoe UI", 9))
+            return
         if kind == "batch_started":
             self.batch_status.configure(text=f"0 / {event[1]} files complete")
             return
@@ -636,9 +720,11 @@ class CerberusApp(tk.Tk):
             "Unknown": COLORS["yellow"],
         }.get(file_type.get("compatibility"), COLORS["muted"])
         self.identity_values["compatibility"].configure(foreground=compatibility_color)
-        self.identity_values["hash"].configure(text=details.get("sha256", "Not calculated"), font=("Consolas", 8))
+        sha256_value = details.get("sha256", "Not calculated")
+        self._selected_hash = sha256_value if sha256_value and sha256_value != "Not calculated" else None
+        self.identity_values["hash"].configure(text=self._chunk_hex(sha256_value) if sha256_value else "Not calculated", font=("Consolas", 8), foreground=COLORS["text"])
         self.identity_values["size"].configure(text=f"{details.get('size_bytes', 0)} bytes")
-        self.path_label.configure(text=f"Path: {result.get('path', '-')}")
+        self.path_label.configure(text=self._format_path(result.get("path", "-")))
         risk = result["risk"]
         self.risk_label.configure(text=f"{risk['level'].upper()} RISK", foreground=self._risk_color(risk["level"]))
         self.score_label.configure(text=f"{risk['score']} / 100  |  {result['analysis_duration']:.3f}s")
@@ -729,9 +815,6 @@ class CerberusApp(tk.Tk):
         self.completed_engines = 0
         self.progress.configure(value=0)
         self.progress_label.configure(text="Preparing analysis")
-        self.path_label.configure(text="Path: -")
-        for value in self.identity_values.values():
-            value.configure(text="-")
         self._set_stage("IDENTITY", "QUEUED")
         self._set_stage("EVIDENCE", "QUEUED")
         self._set_stage("VERDICT", "QUEUED")
