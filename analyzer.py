@@ -1,5 +1,4 @@
 import argparse
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import os
 import sys
 import threading
@@ -16,18 +15,11 @@ from modules.analysis_cache import AnalysisCache
 from modules.analysis_events import AnalysisEvent, emit_event
 from modules.file_metrics import read_analysis_buffer
 from modules.reports import CERBERUS_VERSION
+from modules.batch import collect_candidates, run_batch_analysis
 from modules.colors import (
     paint_red, paint_green, paint_yellow, paint_cyan, paint_bold,
     paint_blue, paint_dim, paint_magenta,
 )
-
-BATCH_ASSET_EXTENSIONS = {
-    ".apng", ".avi", ".bmp", ".css", ".eot", ".flac", ".gif", ".ico",
-    ".jpeg", ".jpg", ".m4a", ".mkv", ".mov", ".mp3", ".mp4", ".ogg",
-    ".otf", ".png", ".scss", ".svg", ".tif", ".tiff", ".ttf", ".wav",
-    ".webm", ".webp", ".woff", ".woff2",
-}
-BATCH_IGNORED_DIRECTORIES = {".git", ".venv", "__pycache__", "node_modules"}
 
 
 class ProgressTracker:
@@ -412,83 +404,46 @@ def analyze_file(selected_file, config, show_details=True):
 
 
 def analyze_folder(folder_path, config):
-    files = []
-    skipped = []
-    for root_path, directories, filenames in os.walk(folder_path):
-        directories[:] = [
-            directory for directory in directories
-            if directory.lower() not in BATCH_IGNORED_DIRECTORIES
-        ]
-        files.extend(os.path.join(root_path, name) for name in filenames)
-    files.sort()
-    if not files:
+    print_section("Batch Analysis")
+    candidates, skipped = collect_candidates(folder_path)
+    print(
+        f"  {paint_dim('Candidates')} {paint_bold(len(candidates))}"
+        f"   {paint_dim('Skipped assets')} {paint_yellow(len(skipped))}"
+    )
+    if not candidates:
         print(paint_yellow("[-] No files found in the selected folder."))
         return
 
-    candidate_files = []
-    for filepath in files:
-        extension = os.path.splitext(filepath)[1].lower()
-        if extension in BATCH_ASSET_EXTENSIONS:
-            skipped.append({
-                "file": os.path.basename(filepath),
-                "path": filepath,
-                "reason": "asset extension excluded",
-            })
-        else:
-            candidate_files.append(filepath)
+    def on_progress(result, index, total):
+        filepath = result.get("path", "")
+        print(paint_cyan(f"\n[{index}/{total}] ") + paint_bold(os.path.basename(filepath)))
+        if not result.get("success"):
+            print(paint_red(f"[-] Analysis failed: {result.get('error')}"))
+            return
+        report_status = "report generated" if result["report_generated"] else "report skipped"
+        cache_status = " / cached" if result.get("cache_hit") else ""
+        score_label = f"({result['risk_score']}/100)"
+        duration_label = f"{result['analysis_duration']:.3f}s"
+        print(
+            f"  {paint_dim('Risk')} {paint_bold(result['risk_level'])} "
+            f"{paint_dim(score_label)}"
+            f"  {paint_dim('Time')} {paint_yellow(duration_label)}"
+            f"  {paint_dim(report_status + cache_status)}"
+        )
 
-    print_section("Batch Analysis")
-    print(
-        f"  {paint_dim('Candidates')} {paint_bold(len(candidate_files))}"
-        f"   {paint_dim('Skipped assets')} {paint_yellow(len(skipped))}"
-    )
+    def on_error(filepath, error, index, total):
+        print(paint_cyan(f"\n[{index}/{total}] ") + paint_bold(os.path.basename(filepath)))
+        print(paint_red(f"[-] Analysis failed: {error}"))
+
     batch_start = time.perf_counter()
-    results = []
-    if config.get("cache_enabled", True) and not config.get("_cache"):
-        config["_cache"] = AnalysisCache(config.get("output_dir", "reports"), CERBERUS_VERSION)
-
-    worker_count = max(1, min(int(config.get("workers", 1)), len(candidate_files) or 1))
-    chunk_size = max(1, int(config.get("batch_chunk_size", worker_count * 4)))
-
-    def analyze_candidate(filepath):
-        return analyze_file(filepath, config, show_details=False)
-
-    def process_chunk(chunk_files, start_index):
-        chunk_results = []
-        with ThreadPoolExecutor(max_workers=worker_count) as executor:
-            futures = {executor.submit(analyze_candidate, filepath): filepath for filepath in chunk_files}
-            for local_index, future in enumerate(as_completed(futures), start=1):
-                filepath = futures[future]
-                global_index = start_index + local_index
-                print(paint_cyan(f"\n[{global_index}/{len(candidate_files)}] ") + paint_bold(os.path.basename(filepath)))
-                try:
-                    result = future.result()
-                    chunk_results.append(result)
-                    report_status = "report generated" if result["report_generated"] else "report skipped"
-                    cache_status = " / cached" if result.get("cache_hit") else ""
-                    score_label = f"({result['risk_score']}/100)"
-                    duration_label = f"{result['analysis_duration']:.3f}s"
-                    print(
-                        f"  {paint_dim('Risk')} {paint_bold(result['risk_level'])} "
-                        f"{paint_dim(score_label)}"
-                        f"  {paint_dim('Time')} {paint_yellow(duration_label)}"
-                        f"  {paint_dim(report_status + cache_status)}"
-                    )
-                except (OSError, ValueError) as error:
-                    chunk_results.append({"file": os.path.basename(filepath), "path": filepath, "success": False, "error": str(error)})
-                    print(paint_red(f"[-] Analysis failed: {error}"))
-        return chunk_results
-
-    for chunk_start in range(0, len(candidate_files), chunk_size):
-        chunk = candidate_files[chunk_start:chunk_start + chunk_size]
-        results.extend(process_chunk(chunk, chunk_start))
-
-    cache = config.get("_cache")
-    if cache:
-        cache.close()
-
+    results, skipped, _ = run_batch_analysis(
+        folder_path, config, on_progress=on_progress, on_error=on_error
+    )
     duration = round(time.perf_counter() - batch_start, 3)
-    summary_path = save_batch_summary(folder_path, results, duration, reports_folder=config.get("output_dir", "reports"), skipped=skipped)
+    summary_path = save_batch_summary(
+        folder_path, results, duration,
+        reports_folder=config.get("output_dir", "reports"), skipped=skipped,
+    )
     print(paint_green(f"\n[+] Batch summary generated at: {summary_path}"))
 
 def build_cli_parser():
@@ -575,6 +530,14 @@ def main():
 
         if not args.file:
             parser.error("a file path is required in CLI mode")
+        if os.path.isdir(args.file):
+            config = cli_config(args)
+            if not args.quiet:
+                print_banner()
+            analyze_folder(args.file, config)
+            if not args.quiet:
+                print_watermark()
+            return
         config = cli_config(args)
         if not args.quiet:
             print_banner()

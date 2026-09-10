@@ -3,13 +3,12 @@ import json
 import queue
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from modules.iocs import inspect_ioc_lists
-from modules.analysis_cache import AnalysisCache
-from modules.reports import CERBERUS_VERSION, save_batch_summary
+from modules.reports import save_batch_summary
+from modules.batch import collect_candidates, run_batch_analysis
 
 
 COLORS = {
@@ -334,17 +333,10 @@ class CerberusApp(tk.Tk):
         self.analysis_thread.start()
 
     def _run_batch(self, folder):
-        ignored = {".git", ".venv", "__pycache__", "node_modules"}
-        asset_extensions = {".png", ".jpg", ".jpeg", ".gif", ".mp3", ".mp4", ".wav", ".woff", ".woff2"}
-        files = []
-        for root, directories, filenames in os.walk(folder):
-            directories[:] = [directory for directory in directories if directory.lower() not in ignored]
-            files.extend(os.path.join(root, name) for name in filenames)
-        files = [filepath for filepath in sorted(files) if os.path.splitext(filepath)[1].lower() not in asset_extensions]
-        
+        candidates, skipped = collect_candidates(folder)
+
         worker_count = min(4, max(1, os.cpu_count() or 1))
-        chunk_size = worker_count * 4
-        
+
         config = {
             "blacklist": True,
             "virustotal": False,
@@ -361,56 +353,30 @@ class CerberusApp(tk.Tk):
             "cache_enabled": True,
             "minimum_report_score": 50,
             "virustotal_suspicious_only": True,
-            "batch_chunk_size": chunk_size,
         }
-        config["_cache"] = AnalysisCache(config["output_dir"], CERBERUS_VERSION)
-        
-        self.events.put(("batch_started", len(files)))
+
+        self.events.put(("batch_started", len(candidates)))
         batch_started = time.perf_counter()
-        batch_results = []
-        
-        def analyze_candidate(filepath):
-            return self.analyzer.analyze_file(filepath, config, show_details=False)
-        
-        def process_chunk(chunk_files, start_index):
-            chunk_results = []
-            with ThreadPoolExecutor(max_workers=worker_count) as executor:
-                futures = {executor.submit(analyze_candidate, filepath): filepath for filepath in chunk_files}
-                for local_index, future in enumerate(as_completed(futures), start=1):
-                    filepath = futures[future]
-                    try:
-                        result = future.result()
-                        chunk_results.append(result)
-                        global_index = start_index + local_index
-                        self.events.put(("batch_result", global_index, len(files), result))
-                    except Exception as error:
-                        failure = {
-                            "file": os.path.basename(filepath),
-                            "path": filepath,
-                            "success": False,
-                            "error": str(error),
-                        }
-                        chunk_results.append(failure)
-                        global_index = start_index + local_index
-                        self.events.put(("batch_error", global_index, len(files), filepath, str(error)))
-            return chunk_results
-
-        for chunk_start in range(0, len(files), chunk_size):
-            chunk = files[chunk_start:chunk_start + chunk_size]
-            batch_results.extend(process_chunk(chunk, chunk_start))
-
-        cache = config.get("_cache")
-        if cache:
-            cache.close()
+        batch_results, _, _ = run_batch_analysis(
+            folder,
+            config,
+            on_progress=lambda result, index, total: self.events.put(
+                ("batch_result", index, total, result)
+            ),
+            on_error=lambda filepath, error, index, total: self.events.put(
+                ("batch_error", index, total, filepath, str(error))
+            ),
+        )
 
         summary_path = save_batch_summary(
             folder,
             batch_results,
             round(time.perf_counter() - batch_started, 3),
             reports_folder=config["output_dir"],
+            skipped=skipped,
         )
         self.events.put(("batch_summary", summary_path))
-        self.events.put(("batch_complete", len(files)))
+        self.events.put(("batch_complete", len(candidates)))
 
     def _panel(self, parent, column, title):
         panel = ttk.Frame(parent, style="Panel.TFrame", padding=16)
