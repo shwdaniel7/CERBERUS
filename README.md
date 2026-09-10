@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="https://i.imgur.com/VG9jzJy.png" alt="CERBERUS Logo" width="280" />
+  <img src="assets/images/logo.jpg" alt="CERBERUS Logo" width="420" />
 </p>
 
 <p align="center">
-  <img src="https://files.catbox.moe/c8nu8t.webp" alt="CERBERUS Demo" width="560" />
+  <img src="assets/images/applogo.png" alt="CERBERUS App" width="180" />
 </p>
 
 <h1 align="center">CERBERUS</h1>
@@ -104,6 +104,10 @@ CERBERUS/
 ├── requirements.txt
 ├── .env
 ├── .gitignore
+├── assets/
+│   └── images/
+│       ├── applogo.png
+│       └── logo.jpg
 ├── docs/
 │   ├── gui/
 │   │   └── ISSUE_18_GUI_RESPONSIVENESS.md
@@ -143,6 +147,7 @@ CERBERUS/
 - `modules/iocs.py` loads and sanity-checks the local blacklist and suspicious-term lists.
 - `modules/` contains each analysis engine and utility.
 - `iocs/` stores local indicators for blacklist and suspicious string matching.
+- `assets/` holds the CERBERUS logo used in the README and the application icon shown in the window.
 - `docs/` records the optimization and GUI work behind the project.
 - `reports/` is the output folder for JSON, CSV, and HTML report files; `.cerberus-cache.sqlite3` is created there at runtime.
 - `requirements.txt` contains the runtime dependencies used by the project.

@@ -3,7 +3,7 @@
 Data: 2026-09-09
 Escopo: eliminar o travamento/lentidão do batch-scan migrando os workers para
 processos separados; corrigir o dispatch de pasta na CLI.
-Branch: `dev`. Base: rodada P1–P5 (opt. de I/O e matching).
+Branch: `fix/gui-window-constraints`. Base: rodada P1–P5 (opt. de I/O e matching).
 
 ---
 

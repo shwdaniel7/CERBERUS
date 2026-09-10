@@ -86,10 +86,25 @@ class CerberusApp(tk.Tk):
         self.geometry("1240x780")
         self.minsize(980, 650)
         self.configure(background=COLORS["bg"])
+        self._set_application_icon()
         self._configure_styles()
         self._build_layout()
         self._bind_shortcuts()
         self.after(100, self._drain_events)
+
+    def _set_application_icon(self):
+        icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "assets", "images", "applogo.png",
+        )
+        if not os.path.exists(icon_path):
+            print(f"[-] CERBERUS icon not found: {icon_path}")
+            return
+        try:
+            self._icon_photo = tk.PhotoImage(file=icon_path)
+            self.iconphoto(True, self._icon_photo)
+        except tk.TclError as exc:
+            print(f"[-] Could not load CERBERUS icon: {exc}")
 
     def _configure_styles(self):
         style = ttk.Style(self)
