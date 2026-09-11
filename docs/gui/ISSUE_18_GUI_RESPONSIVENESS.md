@@ -4,7 +4,7 @@ Data: 2026-09-09
 Escopo: correção da Issue #18 — população imediata da Identity após seleção de
 arquivo, mínimo de janela definido e aplicado, e layout funcional sem clipping
 em 980×650.
-Branch: `dev`. Base: HEAD `1e40470` (batch via multiprocessing, PR #20).
+Branch: `fix/batch-performance`. Base: HEAD `1e40470` (batch via multiprocessing, PR #20).
 
 ---
 
