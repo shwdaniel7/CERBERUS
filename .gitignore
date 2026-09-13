@@ -1,6 +1,12 @@
 # Configurações Secretas / Chaves de API
 .env
 
+# Configurações locais do usuário (nunca conter segredos)
+settings.json
+
+# Notas de estudo pessoais (não versionar)
+STUDY_NOTES.md
+
 # Pastas de Relatórios de Testes Locais
 reports/
 

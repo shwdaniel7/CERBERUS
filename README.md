@@ -59,7 +59,7 @@ CERBERUS implements interactive and automated scan profiles:
 |---|---|---|
 | Full Scan | Local blacklist, VirusTotal lookup, string IOC scan, Shannon entropy, magic number header check | JSON, CSV, and HTML reports |
 | Quick Scan | Local blacklist, magic number header check | JSON, CSV, and HTML reports |
-| Custom Scan | User-selected combination of all available engines | Optional JSON, CSV, and HTML reports |
+| Custom Scan | User-selected combination of all available engines (engine toggles in the GUI) | Optional JSON, CSV, and HTML reports |
 | Analysis History | Lists previous JSON reports with optional name, hash, or risk-level filtering | Terminal listing |
 | Batch Scan | Full Scan applied to every file in a selected folder with **parallel worker processes**, cache reuse, and an optimized SQLite WAL cache | Risk-filtered JSON reports plus batch summary |
 | IOC Lists Integrity | Validates local hashes and suspicious terms, reporting valid and malformed entries | Terminal listing |
@@ -101,19 +101,25 @@ CERBERUS/
 ├── analyzer.py
 ├── LICENSE
 ├── README.md
+├── SECURITY.md
 ├── requirements.txt
 ├── .env
 ├── .gitignore
+├── settings.json (created at runtime; git-ignored)
 ├── assets/
 │   └── images/
 │       ├── applogo.png
 │       └── logo.jpg
 ├── docs/
+│   ├── ROADMAP.md
 │   ├── gui/
+│   │   ├── ISSUE_16_APP_ICON.md
 │   │   └── ISSUE_18_GUI_RESPONSIVENESS.md
-│   └── optimization/
-│       ├── BATCH_OPTIMIZATION.md
-│       └── P1-P5.md
+│   ├── optimization/
+│   │   ├── BATCH_OPTIMIZATION.md
+│   │   └── P1-P5.md
+│   └── security/
+│       └── SECURITY_AUDIT.md
 ├── iocs/
 │   ├── blacklist.txt
 │   └── suspect_strings.txt
@@ -133,6 +139,7 @@ CERBERUS/
 │   ├── pe_analysis.py
 │   ├── reports.py
 │   ├── risk.py
+│   ├── settings_store.py
 │   └── strings.py
 └── reports/
     └── .cerberus-cache.sqlite3 (created at runtime)
@@ -145,6 +152,7 @@ CERBERUS/
 - `modules/analysis_cache.py` stores reusable results for repeated scans in an SQLite WAL database.
 - `modules/batch.py` runs folder scans across parallel worker processes and reuses the cache per worker.
 - `modules/iocs.py` loads and sanity-checks the local blacklist and suspicious-term lists.
+- `modules/settings_store.py` persists non-secret operational defaults in `settings.json` (engines, cache, workers, file-size limit, report output) used by the GUI and as CLI fallbacks.
 - `modules/` contains each analysis engine and utility.
 - `iocs/` stores local indicators for blacklist and suspicious string matching.
 - `assets/` holds the CERBERUS logo used in the README and the application icon shown in the window.
@@ -236,7 +244,7 @@ python analyzer.py arquivo.exe --quick --no-virustotal --report html --output re
 python analyzer.py ./samples/ --full
 ```
 
-Passing a folder runs the Batch Scan engine over every relevant file inside it. `--report` defaults to `all` (JSON, CSV, and HTML), and `--quick` scans still write reports for the engines they run.
+Passing a folder runs the Batch Scan engine over every relevant file inside it. `--report` defaults to `all` (JSON, CSV, and HTML), and `--quick` scans still write reports for the engines they run. When CLI options are omitted they fall back to the persisted operational settings in `settings.json` (created on first dashboard use).
 
 CLI options:
 
@@ -244,12 +252,12 @@ CLI options:
 - `--quick`: run the local blacklist and file-type checks.
 - `--clear-history`: delete all analysis reports and history files.
 - `--no-virustotal`: disable VirusTotal requests.
-- `--report all|json|csv|html`: choose generated report formats.
-- `--output PATH`: choose the report directory.
+- `--report all|json|csv|html`: choose generated report formats (default from `settings.json`).
+- `--output PATH`: choose the report directory (default from `settings.json`).
 - `--quiet`: suppress engine progress and print only the final risk and duration.
-- `--workers N`: configure concurrent workers for batch analysis.
+- `--workers N`: configure concurrent workers for batch analysis (default from `settings.json`).
 - `--no-cache`: disable the persistent SQLite analysis cache.
-- `--max-file-size BYTES`: skip files larger than the configured limit.
+- `--max-file-size BYTES`: skip files larger than the configured limit (default **209715200** = 200 MB; `0` = unlimited).
 - `--include-cache`: also clear the analysis cache when using `--clear-history`.
 
 ### Terminal-only execution
@@ -299,7 +307,7 @@ The Evidence panel now keeps an `Overview` tab for live engine progress and prov
 
 ### Application flows
 
-The dashboard navigation now includes `New Analysis`, `Batch Scan`, `History`, `Reports`, `IOC Lists`, and `Settings`. Batch Scan runs files in the background and reports completion, risk, duration, cache hits, and failures incrementally. History reads previous JSON summaries, Reports lists generated artifacts, and IOC Lists reuses the existing integrity checks. These are the first operational flows; deeper report comparison and filtering remain future polish.
+The dashboard navigation includes `New Analysis`, `Batch Scan`, `History`, `Reports`, `IOC Lists`, and `Settings`. `New Analysis` offers **Full Scan**, **Quick Scan**, or **Custom Scan** (engine checkboxes in the GUI); you can also paste a full file path into the target field instead of using the file picker. `Settings` is a working form that persists engine selection, cache toggle, worker count, max file size, report format, and output directory in `settings.json` (git-ignored, contains no secrets). `Batch Scan` respects those settings for worker count, enabled engines, and max file size, and runs files in the background while reporting completion, risk, duration, cache hits, and failures incrementally. History and Reports are interactive views: selecting a row lets you view the JSON in a pop-up, open the generated artifact, or open the reports folder directly.
 
 ### Interface polish
 
@@ -307,15 +315,15 @@ The dashboard includes lightweight interaction polish without turning the forens
 
 On file selection the Identity panel is populated immediately with the name, extension, size, header-detected type, and compatibility, while the SHA-256 is computed in the background. The window enforces a `980x650` minimum and the path and hash text reflows when resized, so the layout never clips at small sizes.
 
-The dashboard opens with a file picker. After selecting a target file, choose **Full Scan**, **Quick Scan**, or **Custom Scan** as the profile. The analysis runs in a background thread while each enabled engine reports its status, and the result fills the `IDENTITY`, `EVIDENCE`, and `VERDICT` panels.
+The dashboard opens with a file picker. After selecting a target file, choose **Full Scan**, **Quick Scan**, or **Custom Scan** as the profile — `Custom Scan` enables only the engines you toggle, and `Quick`/`Full` preset them. The analysis runs in a background thread while each enabled engine reports its status, and the result fills the `IDENTITY`, `EVIDENCE`, and `VERDICT` panels.
 
-The **History** view lists previous JSON reports stored in `reports/`. It can be filtered by file name, SHA-256 hash, or risk level, and displays the analysis date, risk score, hash, and report path. A **Clear History** button deletes all JSON report files (with confirmation).
+The **History** view lists previous JSON reports stored in `reports/` with the analysis date, file name, risk, and score. Select a row to **View JSON** (indented pop-up), **Open Report** (opens the matching artifact with the system application), or **Open Folder**; a **Clear History** button deletes all JSON report files (with confirmation).
 
 The **Batch Scan** flow chooses a folder. CERBERUS recursively analyzes relevant files using the Full Scan profile, but only generates individual JSON, CSV, and HTML reports when the risk score reaches `50/100` (`High` or `Critical`). Lower-risk files are still included in the analysis summary without creating individual reports. The batch consults VirusTotal only when local indicators are present, which avoids spending API quota on routine files. The `batch_summary_<timestamp>.json` file contains totals, risk-level counts, generated reports, risk-filtered reports, failures, skipped files, and report references. Common assets such as images, fonts, audio, and video are skipped by default, as are `.git`, `.venv`, `__pycache__`, and `node_modules` directories.
 
 **Large folder handling**: Batch scans dispatch files across worker processes and emit progress per file, so the UI remains interactive even with thousands of files.
 
-The **Reports** navigation tab lists all generated artifacts (JSON, CSV, HTML). A **Clear Reports** button removes all report files including batch summaries (with confirmation).
+The **Reports** navigation tab lists all generated artifacts (JSON, CSV, HTML) with file kind and size — select a row or double-click to open the artifact. A **Clear Reports** button removes all report files including batch summaries (with confirmation).
 
 The **IOC Lists** flow validates the IOC files. `iocs/blacklist.txt` accepts one SHA-256 hash per line, with optional `#` comments. `iocs/suspect_strings.txt` accepts one suspicious term per line. Invalid hashes, empty terms, and malformed entries are ignored during analysis and reported by this flow. Both files are reloaded from disk for every analysis, so updating them does not require a code change or restart.
 

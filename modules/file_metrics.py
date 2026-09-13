@@ -3,6 +3,7 @@ import hashlib
 
 CHUNK_SIZE = 1024 * 1024
 MAX_BUFFERED_BYTES = 128 * 1024 * 1024
+DEFAULT_MAX_FILE_SIZE = 200 * 1024 * 1024
 
 
 def collect_file_metrics(filepath):
