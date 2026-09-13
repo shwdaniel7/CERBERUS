@@ -57,7 +57,7 @@ CERBERUS implements interactive and automated scan profiles:
 
 | Profile | Enabled Engines | Report Output |
 |---|---|---|
-| Full Scan | Local blacklist, VirusTotal lookup, string IOC scan, Shannon entropy, magic number header check | JSON, CSV, and HTML reports |
+| Full Scan | Local blacklist, VirusTotal lookup, string IOC scan, Shannon entropy, magic number header check, PE analysis, structured IOC extraction, Base64/XOR deobfuscation, YARA rules | JSON, CSV, and HTML reports |
 | Quick Scan | Local blacklist, magic number header check | JSON, CSV, and HTML reports |
 | Custom Scan | User-selected combination of all available engines (engine toggles in the GUI) | Optional JSON, CSV, and HTML reports |
 | Analysis History | Lists previous JSON reports with optional name, hash, or risk-level filtering | Terminal listing |
@@ -78,6 +78,7 @@ The toolkit can:
 - detect known packer signatures such as PyInstaller and UPX to contextualize entropy
 - analyze PE headers and sections when the optional `pefile` engine is available
 - scan files against custom YARA rules when the optional `yara-python` engine is available
+- detect and decode Base64 blobs and single-byte XOR content (stdlib), feeding the decoded view back into YARA and IOC extraction
 - compare declared extensions with detected file types and report compatibility
 - query VirusTotal only when an API key is configured, with explicit clean, unknown, suspicious, and malicious states
 - identify file type from magic bytes and detect disguised PE executables

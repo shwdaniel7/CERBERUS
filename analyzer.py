@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+import tempfile
 import threading
 import time
 
@@ -124,6 +125,54 @@ def print_section(title):
     print()
 
 
+def _scan_decoded_blobs(deobf_analysis, config):
+    """Run YARA over the blobs decoded by the deobfuscation engine.
+
+    Each blob is written to a private temp file (the YARA engine is file
+    based) and tagged with ``decoded: True`` so the report can distinguish
+    matches found in the deobfuscated view from matches in the raw file.
+    """
+    feed = (deobf_analysis or {}).get("feed_blobs") or []
+    if not feed:
+        return []
+    from modules.yara_engine import scan_yara
+    decoded_matches = []
+    try:
+        with tempfile.TemporaryDirectory(prefix="cerberus_decode_") as tmp_dir:
+            for index, blob in enumerate(feed):
+                blob_path = os.path.join(tmp_dir, f"decoded_blob_{index}.bin")
+                with open(blob_path, "wb") as handle:
+                    handle.write(blob)
+                try:
+                    blob_result = scan_yara(blob_path, config)
+                except Exception:
+                    continue
+                for match in blob_result.get("matches", []):
+                    tagged = dict(match)
+                    tagged["decoded"] = True
+                    tagged["source_blob"] = index
+                    decoded_matches.append(tagged)
+    except OSError:
+        pass
+    return decoded_matches
+
+
+def _merge_iocs(target, extra):
+    """Merge extra IOC buckets into ``target`` without duplicating values."""
+    if not extra:
+        return target
+    for category, values in (extra or {}).items():
+        if not values:
+            continue
+        seen = set(target.get(category) or [])
+        bucket = target.setdefault(category, [])
+        for value in values:
+            if value not in seen:
+                seen.add(value)
+                bucket.append(value)
+    return target
+
+
 def analyze_file(selected_file, config, show_details=True):
     byte_size = os.path.getsize(selected_file)
     max_file_size = config.get("max_file_size")
@@ -177,6 +226,7 @@ def analyze_file(selected_file, config, show_details=True):
     packer_analysis = {"detected": False, "packers": {}, "note": "Not executed"}
     pe_analysis = {"status": "not_executed", "sections": []}
     yara_analysis = None
+    deobf_analysis = None
     shared_metrics = None
     shared_content = None
 
@@ -189,6 +239,7 @@ def analyze_file(selected_file, config, show_details=True):
         bool(config["strings"]),
         bool(config.get("pe_analysis")),
         bool(config.get("ioc_extract")),
+        bool(config.get("deobfuscation")),
         bool(config.get("yara")),
         bool(config["virustotal"]),
     ))
@@ -300,6 +351,28 @@ def analyze_file(selected_file, config, show_details=True):
             print()
         engine_done("Strings", engine_started)
 
+    if config.get("deobfuscation"):
+        engine_started = engine_start("Deobfuscation (Base64/XOR)")
+        if show_details:
+            print_section("Deobfuscation")
+        if shared_content is None and shared_metrics is None:
+            shared_content, shared_metrics = read_analysis_buffer(
+                selected_file, compute_histogram=config["entropy"]
+            )
+        from modules.deobfuscation import analyze_deobfuscation
+        deobf_analysis = analyze_deobfuscation(selected_file, content=shared_content)
+        if show_details:
+            if deobf_analysis.get("flagged"):
+                print(paint_red("[!] Suspicious content found (base64/XOR)!"))
+            else:
+                print(paint_green("[+] No suspicious obfuscated content detected."))
+            print(f"Base64 blobs decoded: {paint_yellow(deobf_analysis['blob_count'])}")
+            print(f"XOR windows decoded: {paint_yellow(deobf_analysis['xor_count'])}")
+            for reason in deobf_analysis["flag_reasons"]:
+                print(f"  -> {paint_red(reason)}")
+            print()
+        engine_done("Deobfuscation (Base64/XOR)", engine_started)
+
     if config.get("pe_analysis"):
         engine_started = engine_start("PE sections")
         if show_details:
@@ -329,12 +402,21 @@ def analyze_file(selected_file, config, show_details=True):
             print()
         engine_done("IOC extraction", engine_started)
 
+    if config.get("deobfuscation") and config.get("ioc_extract") and deobf_analysis:
+        for blob in deobf_analysis.get("feed_blobs") or []:
+            _merge_iocs(extracted_iocs, extract_iocs(selected_file, content=blob))
+
     if config.get("yara"):
         engine_started = engine_start("YARA rules")
         if show_details:
             print_section("YARA")
         from modules.yara_engine import scan_yara
         yara_analysis = scan_yara(selected_file, config)
+        decoded_matches = _scan_decoded_blobs(deobf_analysis, config)
+        if decoded_matches:
+            yara_analysis["matches"] = list(yara_analysis.get("matches", [])) + decoded_matches
+            yara_analysis["match_count"] = len(yara_analysis["matches"])
+            yara_analysis["decoded_match_count"] = len(decoded_matches)
         if show_details:
             if not yara_analysis.get("available"):
                 print(paint_yellow(f"[-] YARA unavailable: {yara_analysis.get('error')}"))
@@ -342,13 +424,20 @@ def analyze_file(selected_file, config, show_details=True):
                 for entry in yara_analysis["matches"]:
                     print(f"  -> {paint_yellow(entry['rule'])}")
                 print(f"YARA matches: {paint_yellow(yara_analysis['match_count'])}")
+                if decoded_matches:
+                    print(paint_cyan(f"     ({len(decoded_matches)} found in decoded blob(s))"))
             print()
         engine_done("YARA rules", engine_started)
 
+    deobf_stripped = (
+        {key: value for key, value in deobf_analysis.items() if key != "feed_blobs"}
+        if deobf_analysis else None
+    )
     suspicious_locally = bool(
         in_blacklist
         or alerts
         or magic_alert
+        or bool(deobf_stripped and deobf_stripped.get("flagged"))
         or bool(yara_analysis and yara_analysis.get("match_count"))
         or any(extracted_iocs.get(category) for category in ("suspicious_paths", "powershell_commands", "cmd_commands"))
     )
@@ -379,6 +468,7 @@ def analyze_file(selected_file, config, show_details=True):
     risk = calculate_risk(
         in_blacklist, result_vt, entropy_status, alerts, magic_alert,
         extracted_iocs, yara_matches=(yara_analysis or {}).get("matches") or None,
+        deobfuscation_analysis=deobf_stripped,
     )
     analysis_duration = round(time.perf_counter() - analysis_start, 3)
     progress.finish()
@@ -391,7 +481,7 @@ def analyze_file(selected_file, config, show_details=True):
             in_blacklist, config, entropy_score, entropy_status, real_type,
             magic_alert, risk, analysis_duration, extracted_iocs, packer_analysis,
             pe_analysis, file_type_analysis, yara_analysis=yara_analysis,
-            engine_times=engine_times
+            deobfuscation_analysis=deobf_stripped, engine_times=engine_times
         )
     result = {
         "file": os.path.basename(selected_file),
@@ -416,6 +506,7 @@ def analyze_file(selected_file, config, show_details=True):
             "packers": packer_analysis,
             "pe_analysis": pe_analysis,
             "yara": yara_analysis,
+            "deobfuscation": deobf_stripped,
             "virustotal": result_vt,
             "blacklist_match": bool(in_blacklist),
             "magic_alert": magic_alert,
@@ -506,6 +597,7 @@ def cli_config(args):
         "entropy": not quick and bool(settings.get("entropy", True)),
         "magic_numbers": bool(settings.get("magic_numbers", True)),
         "pe_analysis": not quick and bool(settings.get("pe_analysis", True)),
+        "deobfuscation": not quick and bool(settings.get("deobfuscation", True)),
         "yara": not quick and bool(settings.get("yara", True)),
         "skip_reparse_points": bool(settings.get("skip_reparse_points", True)),
         "gerar_report": True,

@@ -71,6 +71,12 @@ _ENGINES = [
         description="Extract URLs, IPs, domains, e-mails, paths and shell commands.",
     ),
     Engine(
+        "deobfuscation",
+        "Deobfuscation (Base64/XOR)",
+        "deobfuscation",
+        description="Detect and decode Base64 blobs and single-byte XOR content.",
+    ),
+    Engine(
         "yara",
         "YARA rules",
         "yara",

@@ -15,7 +15,8 @@ could originate from an adversary. This audit covers:
 - Report generation and file handling.
 - Memory and resource bounds when reading hostile files.
 - Configuration and secrets handling.
-- Rule engines designed before implementation (YARA addressed in Phase 2, S6);
+- Rule engines designed before implementation (YARA addressed in Phase 2, S6;
+  deobfuscation decoding bounded in Phase 2, S7);
   the archive engine is still prospective.
 
 ## Findings
@@ -28,6 +29,7 @@ could originate from an adversary. This audit covers:
 | S4 | Medium (future) | **Zip/archive recursion**: decompressing hostile archives can produce zip bombs, absolute paths, or `..` traversal entries. | Phase 2 (`archives` engine) | **By design** — required before implementation: uncompressed-size cap, compression-ratio limit, depth limit, rejection of absolute/`..` entries, extraction into a private temp directory with guaranteed cleanup, and symlink rejection. |
 | S5 | Low-Medium | **Junction/symlink escape during batch walks** could read outside the target folder. `os.walk` does not follow symlinks by default, but the batch also actively prunes reparse-point directories and symlinked files. | `modules/batch.py` `collect_candidates` | **Fixed/Addressed** in Phase 1. `collect_candidates` gains `skip_reparse_points` (default on, persisted in `settings.json`), pruning symlink/junction directories before recursion and excluding symlinked files. Covered by unit tests. |
 | S6 | Medium (future) | **YARA rule handling**: a malicious or broken rule could hang matching or crash the engine. | Phase 2 (`modules/yara_engine.py`) | **Addressed** in Phase 2. Rule files compile one at a time, so syntax errors in a single file are isolated into `compile_errors` and do not discard the other rules (covered by tests). Every `match()` call runs with a 10 s default timeout (`yara_timeout`, S6) so a pathological rule cannot hang a scan, and the engine degrades to `available: False` when `yara-python` is missing. Rule-count/size limits remain an open follow-up item. |
+| S7 | Low-Medium | **Deobfuscation could grow decoded buffers**: decoding long Base64 runs or expanded XOR windows from a hostile file could allocate unbounded memory, and feeding the decoded view into YARA/IOC could amplify that cost. | Phase 2 (`modules/deobfuscation.py`) | **Addressed** in Phase 2. Base64 runs are decoded from a bounded prefix (`MAX_RAW_B64` = 2 MB per blob), only the largest `MAX_BASE64_BLOBS` blobs are kept, per-blob decode is capped, and the decoded feed to YARA/IOC is limited to `MAX_FEED_BLOBS` x `MAX_FEED_BLOB_SIZE`. The XOR brute force works on a fixed `XOR_SCAN_WINDOW` (512 KB). Decoded output can never meaningfully exceed the input size, so expansion-bomb growth is not possible. Covered by unit tests including the bounded-prefix cap. |
 | RS1 | Reviewed / OK | HTML reports escape all sample-controlled text with `html.escape` (`modules/reports.py` `save_html_report`). Risk-level cells derive from the internal scorer, not from file content. | `modules/reports.py` | Reviewed — no change required. |
 | RS2 | Reviewed / OK | IOC, string, and path regexes are linear (no nested quantifiers); no catastrophic backtracking (ReDoS) was found on attacker-controlled content. | `modules/ioc_extract.py`, `modules/strings.py` | Reviewed — kept as a regression rule in Phase 1. |
 | RS3 | Reviewed / OK | VirusTotal calls use a fixed HTTPS URL with a 15 s timeout; the key is read from `.env` and never logged, included in reports, or written to cache. 429/5xx are handled without leaking credentials. | `modules/hashes.py` | Reviewed — no change required. |
@@ -48,7 +50,9 @@ suite in `tests/`, running in CI on Python 3.12/3.13 per commit):
    new export formats apply the same rule.
 5. **Async GUI hygiene**: engines run in worker processes/threads; the mainloop
    only receives typed events (no `eval` of event payloads).
-6. **Archive/rule engines** must satisfy S4/S6 before being enabled.
+6. **Archive/rule engines** must satisfy S4/S6 before being enabled; every new
+   engine must also pass the bounded-read rule (2) and the deobfuscation
+   block-decode caps (S7).
 
 ## Report a vulnerability
 

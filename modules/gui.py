@@ -581,6 +581,7 @@ class CerberusApp(tk.Tk):
             "entropy": bool(self.settings.get("entropy", True)),
             "magic_numbers": bool(self.settings.get("magic_numbers", True)),
             "pe_analysis": bool(self.settings.get("pe_analysis", True)),
+            "deobfuscation": bool(self.settings.get("deobfuscation", True)),
             "yara": bool(self.settings.get("yara", True)),
             "gerar_report": True,
             "report_format": "json",
@@ -802,6 +803,7 @@ class CerberusApp(tk.Tk):
                 "entropy": False,
                 "magic_numbers": True,
                 "pe_analysis": False,
+                "deobfuscation": False,
                 "yara": False,
             }
         else:
@@ -840,6 +842,7 @@ class CerberusApp(tk.Tk):
             "entropy": self.engine_vars["entropy"].get(),
             "magic_numbers": self.engine_vars["magic_numbers"].get(),
             "pe_analysis": self.engine_vars["pe_analysis"].get(),
+            "deobfuscation": self.engine_vars["deobfuscation"].get(),
             "yara": self.engine_vars["yara"].get(),
             "gerar_report": True,
             "report_format": self.settings.get("report_format", "all"),
@@ -878,6 +881,8 @@ class CerberusApp(tk.Tk):
             names.append("PE sections")
         if config["ioc_extract"]:
             names.append("IOC extraction")
+        if config["deobfuscation"]:
+            names.append("Deobfuscation (Base64/XOR)")
         if config["yara"]:
             names.append("YARA rules")
         if config["virustotal"]:
