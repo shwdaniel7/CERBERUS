@@ -103,9 +103,15 @@ CERBERUS/
 ├── README.md
 ├── SECURITY.md
 ├── requirements.txt
+├── requirements-dev.txt (test-only dependencies)
 ├── .env
 ├── .gitignore
+├── conftest.py
+├── pytest.ini
 ├── settings.json (created at runtime; git-ignored)
+├── .github/
+│   └── workflows/
+│       └── ci.yml
 ├── assets/
 │   └── images/
 │       ├── applogo.png
@@ -128,6 +134,7 @@ CERBERUS/
 │   ├── analysis_events.py
 │   ├── batch.py
 │   ├── colors.py
+│   ├── engine_registry.py
 │   ├── entropy.py
 │   ├── file_metrics.py
 │   ├── gui.py
@@ -141,6 +148,14 @@ CERBERUS/
 │   ├── risk.py
 │   ├── settings_store.py
 │   └── strings.py
+├── tests/
+│   ├── test_analyzer.py
+│   ├── test_batch.py
+│   ├── test_cache.py
+│   ├── test_engine_registry.py
+│   ├── test_reports.py
+│   ├── test_risk.py
+│   └── test_settings_store.py
 └── reports/
     └── .cerberus-cache.sqlite3 (created at runtime)
 
@@ -152,7 +167,8 @@ CERBERUS/
 - `modules/analysis_cache.py` stores reusable results for repeated scans in an SQLite WAL database.
 - `modules/batch.py` runs folder scans across parallel worker processes and reuses the cache per worker.
 - `modules/iocs.py` loads and sanity-checks the local blacklist and suspicious-term lists.
-- `modules/settings_store.py` persists non-secret operational defaults in `settings.json` (engines, cache, workers, file-size limit, report output) used by the GUI and as CLI fallbacks.
+- `modules/engine_registry.py` is the single source of the engine list (the GUI engine toggles derive from it) and exposes plugin hooks for upcoming engines.
+- `modules/settings_store.py` persists non-secret operational defaults in `settings.json` (engines, cache, workers, file-size limit, reparse-point skipping, report output) used by the GUI and as CLI fallbacks.
 - `modules/` contains each analysis engine and utility.
 - `iocs/` stores local indicators for blacklist and suspicious string matching.
 - `assets/` holds the CERBERUS logo used in the README and the application icon shown in the window.
@@ -210,7 +226,7 @@ cd CERBERUS
 pip install -r requirements.txt
 ```
 
-> If you prefer a dedicated environment, use `python -m venv .venv` before installing dependencies.
+> If you prefer a dedicated environment, use `python -m venv .venv` before installing dependencies. Developers working on the test suite also install `requirements-dev.txt` (pytest + pytest-cov).
 
 ---
 
@@ -379,6 +395,24 @@ Alerts found: 0
 ```
 
 Add `--quiet` to collapse this into a single line: `sample.exe: Low (20/100) - 0.526s`.
+
+---
+
+## 🧪 Testing
+
+The repo ships with a pytest suite (`tests/`) covering the analyzer pipeline,
+risk scoring, engines, reports, cache, batch runner, settings store, and the
+engine registry — including security-regression tests for CSV injection,
+oversized files, and corrupt settings. GitHub Actions CI (`.github/workflows/ci.yml`)
+runs the suite plus the legacy validation scripts on Python 3.12 and 3.13 for
+Ubuntu and Windows.
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+python -m pytest --cov=modules --cov=analyzer --cov-report=term   # coverage report
+python validate_all.py                                            # legacy end-to-end checks
+```
 
 ---
 

@@ -408,7 +408,9 @@ def analyze_file(selected_file, config, show_details=True):
 
 def analyze_folder(folder_path, config):
     print_section("Batch Analysis")
-    candidates, skipped = collect_candidates(folder_path)
+    candidates, skipped = collect_candidates(
+        folder_path, skip_reparse_points=config.get("skip_reparse_points", True)
+    )
     print(
         f"  {paint_dim('Candidates')} {paint_bold(len(candidates))}"
         f"   {paint_dim('Skipped assets')} {paint_yellow(len(skipped))}"
@@ -480,6 +482,7 @@ def cli_config(args):
         "entropy": not quick and bool(settings.get("entropy", True)),
         "magic_numbers": bool(settings.get("magic_numbers", True)),
         "pe_analysis": not quick and bool(settings.get("pe_analysis", True)),
+        "skip_reparse_points": bool(settings.get("skip_reparse_points", True)),
         "gerar_report": True,
         "report_format": args.report or settings.get("report_format", "all"),
         "output_dir": args.output or settings.get("output_dir", "reports"),

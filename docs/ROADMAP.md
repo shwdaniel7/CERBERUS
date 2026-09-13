@@ -31,15 +31,22 @@ the user on 2026-09-13:
 
 **Docs**: `docs/security/SECURITY_AUDIT.md`, `SECURITY.md`, this file.
 
-## Phase 1 — Foundation
+## Phase 1 — Foundation (in progress)
 
-- pytest suite + `requirements-dev.txt`; `conftest.py`; unit + integration
-  tests for analyzer, risk, engines, reports, batch, cache.
-- Security regression tests (CSV injection, oversized files, corrupt settings).
-- GitHub Actions CI running pytest + `validate_all.py` on Python 3.12/3.13.
-- Lightweight engine registry (`modules/engine_registry.py`) preparing the
-  plugin/API path without a heavy framework.
-- S5: option to skip reparse points during batch walks.
+- **Tests**: `requirements-dev.txt` (pytest + pytest-cov), `pytest.ini`,
+  `conftest.py`, and a `tests/` suite covering the analyzer pipeline, risk
+  scoring, engines, reports, cache, batch runner, settings store, and the
+  engine registry. Security regressions are first-class tests: CSV injection,
+  oversized files, corrupt/hostile settings, symlink/reparse pruning.
+- **CI**: `.github/workflows/ci.yml` — pytest on Python 3.12/3.13 on
+  Ubuntu + Windows, plus the legacy `validate_all.py` / `test_cache_hit.py`
+  suites.
+- **Engine registry**: `modules/engine_registry.py` is the single source of
+  engine names/labels/toggles (the GUI checkboxes now derive from it) and
+  exposes the `register`/`unregister` plugin hooks Phase 2 engines will use.
+- **S5**: `skip_reparse_points` setting (default on) prunes junctions/symlinks
+  during batch walks. `docs/security/SECURITY_AUDIT.md` updated to
+  **Fixed/Addressed**.
 
 ## Phase 2 — Detection engines (each with tests + report schema entry)
 

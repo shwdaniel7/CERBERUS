@@ -20,6 +20,7 @@ DEFAULT_SETTINGS = {
     "entropy": True,
     "magic_numbers": True,
     "pe_analysis": True,
+    "skip_reparse_points": True,
     "max_file_size": 200 * 1024 * 1024,
     "workers": 4,
     "cache_enabled": True,

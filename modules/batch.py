@@ -21,15 +21,30 @@ BATCH_ASSET_EXTENSIONS = {
 BATCH_IGNORED_DIRECTORIES = {".git", ".venv", "__pycache__", "node_modules"}
 
 
-def collect_candidates(folder_path):
-    """Walk a folder and split its files into candidates and skipped assets."""
+def collect_candidates(folder_path, skip_reparse_points=True):
+    """Walk a folder and split its files into candidates and skipped assets.
+
+    When ``skip_reparse_points`` is true (default), directories that are
+    symlinks or Windows junctions are pruned before recursion and symlinked
+    files are excluded, so the batch never follows pointers that could escape
+    the target folder.
+    """
     files = []
     for root_path, directories, filenames in os.walk(folder_path):
         directories[:] = [
             directory for directory in directories
             if directory.lower() not in BATCH_IGNORED_DIRECTORIES
         ]
-        files.extend(os.path.join(root_path, name) for name in filenames)
+        if skip_reparse_points:
+            directories[:] = [
+                directory for directory in directories
+                if not os.path.islink(os.path.join(root_path, directory))
+            ]
+        for name in filenames:
+            filepath = os.path.join(root_path, name)
+            if skip_reparse_points and os.path.islink(filepath):
+                continue
+            files.append(filepath)
     files.sort()
 
     candidates = []
@@ -94,7 +109,9 @@ def run_batch_analysis(folder_path, config, on_progress=None, on_error=None):
     results arrive; they are never pickled. Returns
     ``(results, skipped, duration_seconds)``.
     """
-    candidates, skipped = collect_candidates(folder_path)
+    candidates, skipped = collect_candidates(
+        folder_path, skip_reparse_points=config.get("skip_reparse_points", True)
+    )
     total = len(candidates)
     results = []
     if not total:
