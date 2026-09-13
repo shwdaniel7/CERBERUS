@@ -7,8 +7,12 @@ HIGH_SIGNAL_TERMS = {
     "cmd.exe",
 }
 
+DECODE_FLAGGED_POINTS = 10
 
-def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, iocs=None, yara_matches=None):
+DECODE_FLAG_LABEL = "Deobfuscation"
+
+
+def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, iocs=None, yara_matches=None, deobfuscation_analysis=None):
     score = 0
     factors = []
 
@@ -68,6 +72,14 @@ def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert,
         score += ioc_points
         factors.append(
             f"{suspicious_iocs} suspicious path/command IOC(s) (+{ioc_points})"
+        )
+
+    if deobfuscation_analysis and deobfuscation_analysis.get("flagged"):
+        reasons = deobfuscation_analysis.get("flag_reasons") or []
+        score += DECODE_FLAGGED_POINTS
+        factors.append(
+            f"{DECODE_FLAG_LABEL}: {reasons[0] if reasons else 'suspicious decoded payload'} "
+            f"(+{DECODE_FLAGGED_POINTS})"
         )
 
     if yara_matches:

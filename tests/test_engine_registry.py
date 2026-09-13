@@ -9,7 +9,7 @@ from modules.engine_registry import Engine
 def test_registry_has_all_core_engines():
     names = [engine.name for engine in engine_registry.iter_engines()]
     assert names == ["blacklist", "virustotal", "magic_numbers", "entropy",
-                     "strings", "pe_analysis", "ioc_extract", "yara"]
+                     "strings", "pe_analysis", "ioc_extract", "deobfuscation", "yara"]
 
 
 def test_engine_fields_are_consistent():
@@ -31,7 +31,7 @@ def test_get_engine():
 def test_config_keys():
     assert engine_registry.config_keys() == {
         "blacklist", "virustotal", "magic_numbers", "entropy", "strings",
-        "pe_analysis", "ioc_extract", "yara",
+        "pe_analysis", "ioc_extract", "deobfuscation", "yara",
     }
 
 
@@ -75,7 +75,7 @@ def test_register_and_unregister_plugin_hook():
     assert engine_registry.get_engine("ext_test") is None
     assert [e.name for e in engine_registry.iter_engines()] == [
         "blacklist", "virustotal", "magic_numbers", "entropy", "strings",
-        "pe_analysis", "ioc_extract", "yara",
+        "pe_analysis", "ioc_extract", "deobfuscation", "yara",
     ]
 
 

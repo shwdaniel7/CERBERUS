@@ -72,7 +72,15 @@ the user on 2026-09-13:
    `description`/`reference` in the report. `yara_rules/templates/` ships
    commented skeletons (string/PE/regex) and `docs/YARA_RULES.md` is the
    beginner guide.
-2. **Deobfuscation** (Base64/XOR, stdlib) feeding YARA and IOC matching.
+2. ✅ **Deobfuscation** — `modules/deobfuscation.py` detects long Base64
+   blobs (decode plus printable-text / embedded-header heuristic) and
+   single-byte XOR content (brute force over a bounded window ranking keys by
+   printable ratio and space count). The decoded view feeds back into **YARA**
+   (matches tagged `decoded: True`) and **IOC extraction**, so payloads that
+   hide strings inside Base64 blocks are still caught; a flagged decode adds a
+   capped risk factor. stdlib only (the sixth engine to need no new
+   dependency). Decoding is bounded per S7: a 2 MB raw prefix per blob, capped
+   blob count/size and feed, fixed 512 KB XOR window.
 3. **Fuzzy hashing** — TLSH (wheel; ssdeep as alternative) similarity.
 4. **Archive recursion** — zip via `zipfile` with S4 safeguards.
 5. **Authenticode on PE** — signature presence/subject/issuer; revocation off
