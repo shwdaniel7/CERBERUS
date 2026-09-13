@@ -77,6 +77,7 @@ The toolkit can:
 - calculate Shannon entropy as an indicator of possible compression or packing
 - detect known packer signatures such as PyInstaller and UPX to contextualize entropy
 - analyze PE headers and sections when the optional `pefile` engine is available
+- scan files against custom YARA rules when the optional `yara-python` engine is available
 - compare declared extensions with detected file types and report compatibility
 - query VirusTotal only when an API key is configured, with explicit clean, unknown, suspicious, and malicious states
 - identify file type from magic bytes and detect disguised PE executables
@@ -226,7 +227,7 @@ cd CERBERUS
 pip install -r requirements.txt
 ```
 
-> If you prefer a dedicated environment, use `python -m venv .venv` before installing dependencies. Developers working on the test suite also install `requirements-dev.txt` (pytest + pytest-cov).
+> If you prefer a dedicated environment, use `python -m venv .venv` before installing dependencies. Developers working on the test suite also install `requirements-dev.txt` (pytest + pytest-cov). Optional engines follow the same pattern: `pip install pefile` or `pip install -r requirements-yara.txt`. CERBERUS keeps working without them, skipping the affected engines.
 
 ---
 
@@ -476,6 +477,13 @@ VirusTotal requests use a 15-second timeout and are skipped when `VT_API_KEY` is
 - Extracts URLs, valid IP addresses, domains, e-mail addresses, suspicious Windows/Unix paths, and PowerShell/CMD command fragments.
 - Returns values grouped by category in the `ioc_extraction` report section.
 - Network indicators are collected as evidence and do not increase risk by themselves; suspicious paths and shell commands add only a small risk signal.
+
+### `modules/yara_engine.py`
+
+- Scans the file against the custom rules in `yara_rules/` (`.yar`/`.yara`) using the optional `yara-python` dependency (`requirements-yara.txt`).
+- Rules compile one file at a time behind a per-process fingerprint cache, so a broken rule is reported instead of disabling the rest.
+- Every `match()` runs with a 10 s timeout, and the engine degrades to `available: false` (like `pefile`) when `yara-python` is not installed.
+- YARA hits return the matched rule, tags, and namespace, and add up to 30 risk points when configured (10 per matching rule, capped).
 
 ### `modules/iocs.py`
 

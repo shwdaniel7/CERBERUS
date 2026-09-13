@@ -9,7 +9,7 @@ from modules.engine_registry import Engine
 def test_registry_has_all_core_engines():
     names = [engine.name for engine in engine_registry.iter_engines()]
     assert names == ["blacklist", "virustotal", "magic_numbers", "entropy",
-                     "strings", "pe_analysis", "ioc_extract"]
+                     "strings", "pe_analysis", "ioc_extract", "yara"]
 
 
 def test_engine_fields_are_consistent():
@@ -31,7 +31,7 @@ def test_get_engine():
 def test_config_keys():
     assert engine_registry.config_keys() == {
         "blacklist", "virustotal", "magic_numbers", "entropy", "strings",
-        "pe_analysis", "ioc_extract",
+        "pe_analysis", "ioc_extract", "yara",
     }
 
 
@@ -68,14 +68,14 @@ def test_validate_config_preserves_unknown_keys_and_coerces():
 
 
 def test_register_and_unregister_plugin_hook():
-    fresh = Engine("yara", "YARA rules", "yara", optional=False, description="regex scanner")
-    engine_registry.register(fresh)
-    assert engine_registry.get_engine("yara") == fresh
-    engine_registry.unregister("yara")
-    assert engine_registry.get_engine("yara") is None
+    extra = Engine("ext_test", "Extra test engine", "ext_test", optional=False, description="plugin hook demo")
+    engine_registry.register(extra)
+    assert engine_registry.get_engine("ext_test") == extra
+    engine_registry.unregister("ext_test")
+    assert engine_registry.get_engine("ext_test") is None
     assert [e.name for e in engine_registry.iter_engines()] == [
         "blacklist", "virustotal", "magic_numbers", "entropy", "strings",
-        "pe_analysis", "ioc_extract",
+        "pe_analysis", "ioc_extract", "yara",
     ]
 
 

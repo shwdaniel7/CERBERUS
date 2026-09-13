@@ -15,7 +15,8 @@ could originate from an adversary. This audit covers:
 - Report generation and file handling.
 - Memory and resource bounds when reading hostile files.
 - Configuration and secrets handling.
-- Future engines (archives, YARA) designed before implementation.
+- Rule engines designed before implementation (YARA addressed in Phase 2, S6);
+  the archive engine is still prospective.
 
 ## Findings
 
@@ -26,7 +27,7 @@ could originate from an adversary. This audit covers:
 | S3 | Medium | **Settings persistence could leak into reports/cache or be mis-validated**: a hand-edited or corrupt `settings.json` could crash startup or carry unexpected values; storing secrets there would expose them in cache keys and reports. | `modules/settings_store.py` (new) | **Fixed** in Phase 0. The store only persists non-secret operational values (the VirusTotal key stays in `.env`), returns defaults on corrupt files, and coerces/validates every field (workers ≥ 1, max_file_size ≥ 0, report_format enum, typed booleans). `settings.json` is git-ignored. |
 | S4 | Medium (future) | **Zip/archive recursion**: decompressing hostile archives can produce zip bombs, absolute paths, or `..` traversal entries. | Phase 2 (`archives` engine) | **By design** — required before implementation: uncompressed-size cap, compression-ratio limit, depth limit, rejection of absolute/`..` entries, extraction into a private temp directory with guaranteed cleanup, and symlink rejection. |
 | S5 | Low-Medium | **Junction/symlink escape during batch walks** could read outside the target folder. `os.walk` does not follow symlinks by default, but the batch also actively prunes reparse-point directories and symlinked files. | `modules/batch.py` `collect_candidates` | **Fixed/Addressed** in Phase 1. `collect_candidates` gains `skip_reparse_points` (default on, persisted in `settings.json`), pruning symlink/junction directories before recursion and excluding symlinked files. Covered by unit tests. |
-| S6 | Low (future) | **YARA rule handling**: a malicious or broken rule could hang matching or crash the engine. | Phase 2 (`yara_engine`) | **By design** — required: per-file rule compilation with isolated syntax errors, rule-count and size limits, and a match timeout. |
+| S6 | Medium (future) | **YARA rule handling**: a malicious or broken rule could hang matching or crash the engine. | Phase 2 (`modules/yara_engine.py`) | **Addressed** in Phase 2. Rule files compile one at a time, so syntax errors in a single file are isolated into `compile_errors` and do not discard the other rules (covered by tests). Every `match()` call runs with a 10 s default timeout (`yara_timeout`, S6) so a pathological rule cannot hang a scan, and the engine degrades to `available: False` when `yara-python` is missing. Rule-count/size limits remain an open follow-up item. |
 | RS1 | Reviewed / OK | HTML reports escape all sample-controlled text with `html.escape` (`modules/reports.py` `save_html_report`). Risk-level cells derive from the internal scorer, not from file content. | `modules/reports.py` | Reviewed — no change required. |
 | RS2 | Reviewed / OK | IOC, string, and path regexes are linear (no nested quantifiers); no catastrophic backtracking (ReDoS) was found on attacker-controlled content. | `modules/ioc_extract.py`, `modules/strings.py` | Reviewed — kept as a regression rule in Phase 1. |
 | RS3 | Reviewed / OK | VirusTotal calls use a fixed HTTPS URL with a 15 s timeout; the key is read from `.env` and never logged, included in reports, or written to cache. 429/5xx are handled without leaking credentials. | `modules/hashes.py` | Reviewed — no change required. |
