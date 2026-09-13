@@ -30,15 +30,9 @@ COLORS = {
     "muted": "#929aa8",
 }
 
-ENGINE_OPTIONS = (
-    ("blacklist", "Local blacklist"),
-    ("virustotal", "VirusTotal"),
-    ("magic_numbers", "File type / magic"),
-    ("entropy", "Entropy / packers"),
-    ("strings", "Strings"),
-    ("pe_analysis", "PE sections"),
-    ("ioc_extract", "IOC extraction"),
-)
+from modules.engine_registry import iter_engines
+
+ENGINE_OPTIONS = tuple((engine.name, engine.label) for engine in iter_engines())
 
 
 class Tooltip:

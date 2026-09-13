@@ -28,8 +28,7 @@ def _sanitize_csv_value(value):
 def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration, iocs=None, packer_analysis=None, pe_analysis=None, file_type_analysis=None, engine_times=None):
     reports_folder = config_choices.get("output_dir", "reports")
     report_format = config_choices.get("report_format", "all")
-    if not os.path.exists(reports_folder):
-        os.makedirs(reports_folder)
+    os.makedirs(reports_folder, exist_ok=True)
 
     base_name = os.path.basename(filepath)
     extension = os.path.splitext(base_name)[1].lower()

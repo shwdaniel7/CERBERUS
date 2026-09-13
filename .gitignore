@@ -7,7 +7,7 @@ settings.json
 # Notas de estudo pessoais (não versionar)
 STUDY_NOTES.md
 
-# Pastas de Relatórios de Testes Locais
+# Pastas de Relatórios (saída de análises)
 reports/
 
 # Arquivos de ambiente virtual do Python (caso use)
@@ -21,15 +21,17 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
+.coverage
+htmlcov/
 
-# Arquivos de validação e testes locais
-validate_*.py
-create_test_*.py
-check_*.py
-test_*.py
-test_*.exe
-test_batch/
-VALIDATION.md
+# Arquivos de validação e testes locais, somente na raiz,
+# para não esconder a suíte pytest em tests/
+/validate_*.py
+/create_test_*.py
+/check_*.py
+/test_*.py
+/test_*.exe
+/VALIDATION.md
 
 # Configurações locais do editor de código (VS Code / PyCharm)
 .vscode/
