@@ -120,7 +120,7 @@ def test_analysis_pipeline_runs_yara_hermetically(tmp_path):
     from analyzer import analyze_file
 
     report_dir = tmp_path / "reports"
-    (tmp_path / "rules").mkdir(parents=True)
+    _write_rules(tmp_path / "rules")
     config = {
         "blacklist": True, "virustotal": False, "strings": True, "ioc_extract": False,
         "entropy": False, "magic_numbers": False, "pe_analysis": False, "yara": True,
