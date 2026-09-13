@@ -70,6 +70,13 @@ _ENGINES = [
         "ioc_extract",
         description="Extract URLs, IPs, domains, e-mails, paths and shell commands.",
     ),
+    Engine(
+        "yara",
+        "YARA rules",
+        "yara",
+        optional=True,
+        description="Scan for YARA rule matches (requires the optional yara-python package).",
+    ),
 ]
 
 

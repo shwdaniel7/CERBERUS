@@ -176,6 +176,7 @@ def analyze_file(selected_file, config, show_details=True):
     extracted_iocs = {}
     packer_analysis = {"detected": False, "packers": {}, "note": "Not executed"}
     pe_analysis = {"status": "not_executed", "sections": []}
+    yara_analysis = None
     shared_metrics = None
     shared_content = None
 
@@ -188,6 +189,7 @@ def analyze_file(selected_file, config, show_details=True):
         bool(config["strings"]),
         bool(config.get("pe_analysis")),
         bool(config.get("ioc_extract")),
+        bool(config.get("yara")),
         bool(config["virustotal"]),
     ))
     progress = ProgressTracker(
@@ -327,10 +329,27 @@ def analyze_file(selected_file, config, show_details=True):
             print()
         engine_done("IOC extraction", engine_started)
 
+    if config.get("yara"):
+        engine_started = engine_start("YARA rules")
+        if show_details:
+            print_section("YARA")
+        from modules.yara_engine import scan_yara
+        yara_analysis = scan_yara(selected_file, config)
+        if show_details:
+            if not yara_analysis.get("available"):
+                print(paint_yellow(f"[-] YARA unavailable: {yara_analysis.get('error')}"))
+            else:
+                for entry in yara_analysis["matches"]:
+                    print(f"  -> {paint_yellow(entry['rule'])}")
+                print(f"YARA matches: {paint_yellow(yara_analysis['match_count'])}")
+            print()
+        engine_done("YARA rules", engine_started)
+
     suspicious_locally = bool(
         in_blacklist
         or alerts
         or magic_alert
+        or bool(yara_analysis and yara_analysis.get("match_count"))
         or any(extracted_iocs.get(category) for category in ("suspicious_paths", "powershell_commands", "cmd_commands"))
     )
     should_query_virustotal = config["virustotal"] and virustotal_available() and (
@@ -357,7 +376,10 @@ def analyze_file(selected_file, config, show_details=True):
             result_vt = {"status": "not_configured", "message": "VirusTotal: API key not configured; request not sent."}
         engine_done("VirusTotal (skipped)", engine_started)
 
-    risk = calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, extracted_iocs)
+    risk = calculate_risk(
+        in_blacklist, result_vt, entropy_status, alerts, magic_alert,
+        extracted_iocs, yara_matches=(yara_analysis or {}).get("matches") or None,
+    )
     analysis_duration = round(time.perf_counter() - analysis_start, 3)
     progress.finish()
     report_path = None
@@ -368,7 +390,8 @@ def analyze_file(selected_file, config, show_details=True):
             selected_file, kb_size, hash_result, result_vt, alerts, all_strings,
             in_blacklist, config, entropy_score, entropy_status, real_type,
             magic_alert, risk, analysis_duration, extracted_iocs, packer_analysis,
-            pe_analysis, file_type_analysis, engine_times=engine_times
+            pe_analysis, file_type_analysis, yara_analysis=yara_analysis,
+            engine_times=engine_times
         )
     result = {
         "file": os.path.basename(selected_file),
@@ -392,6 +415,7 @@ def analyze_file(selected_file, config, show_details=True):
             "entropy_status": entropy_status,
             "packers": packer_analysis,
             "pe_analysis": pe_analysis,
+            "yara": yara_analysis,
             "virustotal": result_vt,
             "blacklist_match": bool(in_blacklist),
             "magic_alert": magic_alert,
@@ -482,6 +506,7 @@ def cli_config(args):
         "entropy": not quick and bool(settings.get("entropy", True)),
         "magic_numbers": bool(settings.get("magic_numbers", True)),
         "pe_analysis": not quick and bool(settings.get("pe_analysis", True)),
+        "yara": not quick and bool(settings.get("yara", True)),
         "skip_reparse_points": bool(settings.get("skip_reparse_points", True)),
         "gerar_report": True,
         "report_format": args.report or settings.get("report_format", "all"),

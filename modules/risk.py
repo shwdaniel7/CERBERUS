@@ -8,7 +8,7 @@ HIGH_SIGNAL_TERMS = {
 }
 
 
-def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, iocs=None):
+def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, iocs=None, yara_matches=None):
     score = 0
     factors = []
 
@@ -69,6 +69,11 @@ def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert,
         factors.append(
             f"{suspicious_iocs} suspicious path/command IOC(s) (+{ioc_points})"
         )
+
+    if yara_matches:
+        yara_points = min(30, len(yara_matches) * 10)
+        score += yara_points
+        factors.append(f"{len(yara_matches)} YARA rule(s) matched (+{yara_points})")
 
     score = min(100, score)
     if score >= 75:

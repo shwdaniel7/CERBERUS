@@ -60,7 +60,7 @@ def test_unknown_keys_are_dropped_on_save(store):
     assert "api_key" not in saved
     assert json.loads(store.read_text(encoding="utf-8")) == {  # no unknown key leaks to disk
         "blacklist": True, "virustotal": False, "strings": True, "ioc_extract": True,
-        "entropy": True, "magic_numbers": True, "pe_analysis": True,
+        "entropy": True, "magic_numbers": True, "pe_analysis": True, "yara": True,
         "skip_reparse_points": True, "max_file_size": 200 * 1024 * 1024,
         "workers": 4, "cache_enabled": True, "output_dir": "reports",
         "report_format": "all",

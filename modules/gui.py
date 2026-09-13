@@ -581,6 +581,7 @@ class CerberusApp(tk.Tk):
             "entropy": bool(self.settings.get("entropy", True)),
             "magic_numbers": bool(self.settings.get("magic_numbers", True)),
             "pe_analysis": bool(self.settings.get("pe_analysis", True)),
+            "yara": bool(self.settings.get("yara", True)),
             "gerar_report": True,
             "report_format": "json",
             "output_dir": self.settings.get("output_dir", "reports"),
@@ -801,6 +802,7 @@ class CerberusApp(tk.Tk):
                 "entropy": False,
                 "magic_numbers": True,
                 "pe_analysis": False,
+                "yara": False,
             }
         else:
             presets = {key: True for key, _ in ENGINE_OPTIONS}
@@ -838,6 +840,7 @@ class CerberusApp(tk.Tk):
             "entropy": self.engine_vars["entropy"].get(),
             "magic_numbers": self.engine_vars["magic_numbers"].get(),
             "pe_analysis": self.engine_vars["pe_analysis"].get(),
+            "yara": self.engine_vars["yara"].get(),
             "gerar_report": True,
             "report_format": self.settings.get("report_format", "all"),
             "output_dir": self.settings.get("output_dir", "reports"),
@@ -875,6 +878,8 @@ class CerberusApp(tk.Tk):
             names.append("PE sections")
         if config["ioc_extract"]:
             names.append("IOC extraction")
+        if config["yara"]:
+            names.append("YARA rules")
         if config["virustotal"]:
             names.append("VirusTotal")
         return names

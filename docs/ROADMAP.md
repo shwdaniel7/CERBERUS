@@ -31,7 +31,7 @@ the user on 2026-09-13:
 
 **Docs**: `docs/security/SECURITY_AUDIT.md`, `SECURITY.md`, this file.
 
-## Phase 1 — Foundation (in progress)
+## Phase 1 — Foundation (complete)
 
 - **Tests**: `requirements-dev.txt` (pytest + pytest-cov), `pytest.ini`,
   `conftest.py`, and a `tests/` suite covering the analyzer pipeline, risk
@@ -39,20 +39,29 @@ the user on 2026-09-13:
   engine registry. Security regressions are first-class tests: CSV injection,
   oversized files, corrupt/hostile settings, symlink/reparse pruning.
 - **CI**: `.github/workflows/ci.yml` — pytest on Python 3.12/3.13 on
-  Ubuntu + Windows, plus the legacy `validate_all.py` / `test_cache_hit.py`
-  suites.
+  Ubuntu + Windows with coverage gates. The legacy
+  `validate_all.py` / `test_cache_hit.py` suites are git-ignored and no longer
+  part of CI (their scenarios moved into the pytest suite).
 - **Engine registry**: `modules/engine_registry.py` is the single source of
   engine names/labels/toggles (the GUI checkboxes now derive from it) and
-  exposes the `register`/`unregister` plugin hooks Phase 2 engines will use.
+  exposes the `register`/`unregister` plugin hooks Phase 2 engines use.
 - **S5**: `skip_reparse_points` setting (default on) prunes junctions/symlinks
   during batch walks. `docs/security/SECURITY_AUDIT.md` updated to
   **Fixed/Addressed**.
 
 ## Phase 2 — Detection engines (each with tests + report schema entry)
 
-1. **YARA + custom rules** (high priority) — `yara-python`, `rules/` folder,
-   per-file isolation of compile errors, limits + timeout (S6), mappable into
-   risk factors via metadata and MITRE later.
+1. ✅ **YARA + custom rules** — `modules/yara_engine.py` scans the rules in
+   `yara_rules/` using the optional `yara-python` package
+   (`requirements-yara.txt`; no cp314 wheel yet, so the engine degrades to an
+   `available: False` result instead of crashing, mirroring `pe_analysis`).
+   Rule files compile one at a time behind a per-process fingerprint cache, so
+   a broken rule is recorded in `compile_errors` without discarding the other
+   files; every `match()` call runs with a 10 s timeout (S6). A YARA hit adds
+   a capped risk factor and surfaces in the report as `yara_analysis`
+   (JSON/CSV/HTML). CI installs `requirements-yara.txt`; tests run real rules
+   on 3.12/3.13 and exercise the exception paths locally with a fake `yara`
+   API. Open follow-up: rule-count/size limits for full S6 compliance.
 2. **Deobfuscation** (Base64/XOR, stdlib) feeding YARA and IOC matching.
 3. **Fuzzy hashing** — TLSH (wheel; ssdeep as alternative) similarity.
 4. **Archive recursion** — zip via `zipfile` with S4 safeguards.
