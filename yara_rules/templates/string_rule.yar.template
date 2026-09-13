@@ -1,0 +1,29 @@
+//
+// TEMPLATE — plain string rule.
+//
+// The most common YARA rule: detect one or more literal strings.
+//
+// HOW TO USE (copy this file next to it, edit, rename to *.yar):
+//   1. Replace the strings below with what you want to detect.
+//   2. Keep the meta block: CERBERUS reads `severity` (low/medium/high) to
+//      score the match (5/10/15 points, total capped at 40) and shows
+//      `description`/`reference` in the report.
+//   3. `nocase` makes a string case-insensitive. Omit it for exact match.
+//   4. Drop the finished file in yara_rules/ (or yara_rules/core/) and run a
+//      Full Scan — CERBERUS compiles it automatically.
+//
+rule my_string_rule : tag_one tag_two {
+    meta:
+        description = "What this rule detects, in one sentence"
+        author = "your name"
+        severity = "medium"          // low | medium | high
+        reference = "https://example.com/iocs"
+
+    strings:
+        $suspicious1 = "c2.example.net" nocase
+        $suspicious2 = "malware-marker-xyz"
+
+    condition:
+        any of them                    // any string present -> match
+        // condition: `$suspicious1 and $suspicious2` for ALL strings
+}

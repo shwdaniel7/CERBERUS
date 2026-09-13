@@ -62,6 +62,16 @@ the user on 2026-09-13:
    (JSON/CSV/HTML). CI installs `requirements-yara.txt`; tests run real rules
    on 3.12/3.13 and exercise the exception paths locally with a fake `yara`
    API. Open follow-up: rule-count/size limits for full S6 compliance.
+
+1b. ✅ **Bundled rule catalog + templates for non-expert users** — a
+   conservative, original catalog in `yara_rules/core/` (10 rules: PS cradles,
+   LOLBin staging, embedded-PE, persistence, VBA macros, web shells, RAT
+   markers), each with a positive/negative test pair as the FP guard. Rule
+   files are loaded recursively across subfolders. Severity from `meta` maps
+   to risk (low 5 / medium 10 / high 15, YARA cap 40) and matches expose
+   `description`/`reference` in the report. `yara_rules/templates/` ships
+   commented skeletons (string/PE/regex) and `docs/YARA_RULES.md` is the
+   beginner guide.
 2. **Deobfuscation** (Base64/XOR, stdlib) feeding YARA and IOC matching.
 3. **Fuzzy hashing** — TLSH (wheel; ssdeep as alternative) similarity.
 4. **Archive recursion** — zip via `zipfile` with S4 safeguards.

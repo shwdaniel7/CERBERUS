@@ -480,10 +480,11 @@ VirusTotal requests use a 15-second timeout and are skipped when `VT_API_KEY` is
 
 ### `modules/yara_engine.py`
 
-- Scans the file against the custom rules in `yara_rules/` (`.yar`/`.yara`) using the optional `yara-python` dependency (`requirements-yara.txt`).
+- Scans the file against the custom rules in `yara_rules/` (`.yar`/`.yara`, loaded recursively) using the optional `yara-python` dependency (`requirements-yara.txt`).
+- Ships a conservative catalog in `yara_rules/core/` (PowerShell cradles, LOLBin staging, embedded PE, persistence, VBA macros, web shells, RAT markers) and commented templates in `yara_rules/templates/`; see `docs/YARA_RULES.md`.
 - Rules compile one file at a time behind a per-process fingerprint cache, so a broken rule is reported instead of disabling the rest.
 - Every `match()` runs with a 10 s timeout, and the engine degrades to `available: false` (like `pefile`) when `yara-python` is not installed.
-- YARA hits return the matched rule, tags, and namespace, and add up to 30 risk points when configured (10 per matching rule, capped).
+- YARA hits return the matched rule, tags, namespace, and `meta` (severity/description/reference) when present, and add risk points by severity: low 5 / medium 10 / high 15 per rule, capped at 40.
 
 ### `modules/iocs.py`
 

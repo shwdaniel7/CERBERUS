@@ -23,9 +23,17 @@ except ImportError:  # pragma: no cover - optional dependency
 YARA_RULE_EXTENSIONS = {".yar", ".yara"}
 YARA_RULES_DIR = "yara_rules"
 YARA_TIMEOUT_DEFAULT_SECONDS = 10.0
+DEFAULT_SEVERITY = "medium"
+SEVERITY_POINTS = {"low": 5, "medium": 10, "high": 15}
+MAX_YARA_RISK_POINTS = 40
 
 _cache = {}
 _cache_lock = threading.Lock()
+
+
+def severity_points(severity):
+    """Map a rule ``meta.severity`` to risk points (low/medium/high, capped)."""
+    return SEVERITY_POINTS.get(str(severity or "").lower(), SEVERITY_POINTS[DEFAULT_SEVERITY])
 
 
 def yara_available():
@@ -34,23 +42,26 @@ def yara_available():
 
 
 def _fingerprint(rules_dir):
-    """Hashable state of the rule files in ``rules_dir`` (name, size, mtime)."""
-    try:
-        entries = sorted(os.listdir(rules_dir))
-    except OSError:
+    """Hashable state of the rule files under ``rules_dir`` (rel path, size, mtime).
+
+    Walks subfolders (``yara_rules/core/`` etc.) so bundled rule packs are
+    picked up; ``yara_rules/templates/`` is skipped because the engine only
+    accepts ``.yar``/``.yara`` files.
+    """
+    if not os.path.isdir(rules_dir):
         return None
     state = []
-    for name in entries:
-        if os.path.splitext(name)[1].lower() not in YARA_RULE_EXTENSIONS:
-            continue
-        path = os.path.join(rules_dir, name)
-        if not os.path.isfile(path):
-            continue
-        try:
-            stat = os.stat(path)
-        except OSError:
-            continue
-        state.append((name, stat.st_size, stat.st_mtime_ns))
+    for root, dirs, files in os.walk(rules_dir):
+        dirs.sort()
+        for name in sorted(files):
+            if os.path.splitext(name)[1].lower() not in YARA_RULE_EXTENSIONS:
+                continue
+            path = os.path.join(root, name)
+            try:
+                stat = os.stat(path)
+            except OSError:
+                continue
+            state.append((os.path.relpath(path, rules_dir), stat.st_size, stat.st_mtime_ns))
     return tuple(state) or None
 
 
@@ -62,12 +73,12 @@ def _compile_rules(rules_dir, fingerprint):
     """
     rules_objs = []
     errors = []
-    for name, _, _ in fingerprint:
-        path = os.path.join(rules_dir, name)
+    for relative_name, _, _ in fingerprint:
+        path = os.path.join(rules_dir, relative_name)
         try:
-            rules_objs.append((name, yara.compile(str(path))))
+            rules_objs.append((relative_name, yara.compile(str(path))))
         except (yara.Error, OSError) as error:
-            errors.append((name, f"{name}: {error}"))
+            errors.append((relative_name, f"{relative_name}: {error}"))
     return (rules_objs or None), errors
 
 
@@ -118,15 +129,26 @@ def scan_yara(filepath, config, rules_dir=None):
     matches = []
     for source, rules_object in rules_objs:
         try:
-            found = rules_object.match(filepath=filepath, timeout=timeout)
+            try:
+                found = rules_object.match(filepath=filepath, timeout=timeout, include_metadata=True)
+            except TypeError:  # yara-python < 4.2 does not know include_metadata
+                found = rules_object.match(filepath=filepath, timeout=timeout)
         except yara.Error as error:
             errors.append((source, str(error)))
             continue
         for match in found:
+            metadata = getattr(match, "metadata", None)
+            if not isinstance(metadata, dict):
+                metadata = getattr(match, "meta", None) or {}
+            severity = severity_points(metadata.get("severity"))
             matches.append({
                 "rule": str(match.rule),
                 "tags": list(getattr(match, "tags", []) or []),
                 "namespace": getattr(match, "namespace", "") or "",
+                "severity": str(metadata.get("severity") or DEFAULT_SEVERITY).lower(),
+                "description": str(metadata.get("description") or ""),
+                "reference": str(metadata.get("reference") or ""),
+                "points": severity,
             })
 
     return {
