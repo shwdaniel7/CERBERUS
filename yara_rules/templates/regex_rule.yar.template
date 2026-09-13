@@ -1,0 +1,23 @@
+//
+// TEMPLATE — regex rule.
+//
+// YARA supports a small RE2-style regex syntax. Backslashes inside regex
+// strings must be doubled as in C strings (e.g. `\d` becomes `\\d`).
+// Regexes are slower than plain strings — use them only when a literal or a
+// hex pattern cannot express the idea.
+//
+// HOW TO USE: same copy/edit/place flow as string_rule.yar.template.
+//
+rule my_regex_rule : strings {
+    meta:
+        description = "IPv4-looking address embedded in the file (template)"
+        author = "your name"
+        severity = "low"
+        reference = "https://example.com"
+
+    strings:
+        $ipv4 = /\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b/
+
+    condition:
+        $ipv4 and filesize < 5 * 1024 * 1024
+}

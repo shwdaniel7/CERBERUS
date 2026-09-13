@@ -174,17 +174,18 @@ class _FakeYaraError(Exception):
 
 
 class _FakeMatch:
-    def __init__(self, rule, tags=("fake_tag",), namespace="default"):
+    def __init__(self, rule, tags=("fake_tag",), namespace="default", metadata=None):
         self.rule = rule
         self.tags = tags
         self.namespace = namespace
+        self.metadata = metadata or {}
 
 
 class _FakeRules:
     def __init__(self, matches):
         self._matches = matches
 
-    def match(self, filepath=None, timeout=None):
+    def match(self, filepath=None, timeout=None, include_metadata=False):
         return list(self._matches)
 
 
@@ -198,7 +199,9 @@ class _FakeYara:
         stem = os.path.splitext(name)[0]
         if "bad" in stem:
             raise _FakeYaraError("syntax error in rule file")
-        matches = [_FakeMatch(stem)] if "match" in stem else []
+        metadata = {"description": f"fake rule {stem}", "severity": "high",
+                    "reference": "https://example.test"}
+        matches = [_FakeMatch(stem, metadata=metadata)] if "match" in stem else []
         if "timeout" in stem:
             return _TimeoutRules()
         return _FakeRules(matches)
@@ -208,7 +211,7 @@ class _TimeoutRules(_FakeRules):
     def __init__(self):
         super().__init__([])
 
-    def match(self, filepath=None, timeout=None):
+    def match(self, filepath=None, timeout=None, include_metadata=False):
         raise _FakeYaraError("match timeout")
 
 
@@ -228,7 +231,49 @@ def test_fake_lib_match_reports_rule_tags_namespace(tmp_path, fake_yara):
     assert result["matches"][0]["rule"] == "match_first"
     assert result["matches"][0]["tags"] == ["fake_tag"]
     assert result["matches"][0]["namespace"] == "default"
+    assert result["matches"][0]["severity"] == "high"
+    assert result["matches"][0]["points"] == 15
+    assert "fake rule match_first" in result["matches"][0]["description"]
     assert result["rules_files"] == 2
+
+
+def test_yara_risk_points_follow_severity():
+    from modules.risk import calculate_risk
+
+    base = (False, None, "NORMAL", [], False)
+    high = calculate_risk(*base, yara_matches=[{
+        "points": 15, "severity": "high", "description": "PS IEX cradle",
+        "rule": "cerberus_ps_iex_downloader", "reference": "",
+    }])
+    assert high["score"] == 15
+    assert any("YARA" in factor and "PS IEX cradle" in factor and "+15" in factor
+               for factor in high["factors"])
+
+    low = calculate_risk(*base, yara_matches=[{
+        "points": 5, "severity": "low", "description": "context only",
+        "rule": "cerberus_meterpreter_session", "reference": "",
+    }])
+    assert low["score"] == 5
+
+
+def test_yara_risk_points_capped_at_40():
+    from modules.risk import calculate_risk
+
+    base = (False, None, "NORMAL", [], False)
+    many = calculate_risk(*base, yara_matches=[
+        {"points": 15, "severity": "high", "description": "a", "rule": "r1", "reference": ""},
+        {"points": 15, "severity": "high", "description": "b", "rule": "r2", "reference": ""},
+        {"points": 15, "severity": "high", "description": "c", "rule": "r3", "reference": ""},
+    ])
+    assert many["score"] == 40
+
+
+def test_yara_risk_defaults_to_medium_when_no_meta():
+    from modules.risk import calculate_risk
+
+    base = (False, None, "NORMAL", [], False)
+    result = calculate_risk(*base, yara_matches=[{}])
+    assert result["score"] == 10
 
 
 def test_fake_lib_compile_error_does_not_poison(tmp_path, fake_yara):

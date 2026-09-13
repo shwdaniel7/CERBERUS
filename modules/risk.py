@@ -71,9 +71,19 @@ def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert,
         )
 
     if yara_matches:
-        yara_points = min(30, len(yara_matches) * 10)
+        from modules.yara_engine import MAX_YARA_RISK_POINTS, severity_points
+        yara_points = min(MAX_YARA_RISK_POINTS, sum(
+            int(match.get("points", severity_points(match.get("severity"))))
+            if isinstance(match, dict) else severity_points(None)
+            for match in yara_matches
+        ))
         score += yara_points
-        factors.append(f"{len(yara_matches)} YARA rule(s) matched (+{yara_points})")
+        details = "; ".join(
+            f"{(match.get('description') or match.get('rule') or 'YARA match')} "
+            f"({match.get('severity', 'medium')}, +{match.get('points')})"
+            for match in yara_matches if isinstance(match, dict)
+        ) or f"{len(yara_matches)} YARA rule(s) matched"
+        factors.append(f"YARA: {details} (+{yara_points})")
 
     score = min(100, score)
     if score >= 75:
