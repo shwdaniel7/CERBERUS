@@ -114,7 +114,7 @@ def scan_yara(filepath, config, rules_dir=None):
             "compile_errors": [message for _, message in errors],
         }
 
-    timeout = float(config.get("yara_timeout", YARA_TIMEOUT_DEFAULT_SECONDS))
+    timeout = int(float(config.get("yara_timeout", YARA_TIMEOUT_DEFAULT_SECONDS)))
     matches = []
     for source, rules_object in rules_objs:
         try:
