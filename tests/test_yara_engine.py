@@ -17,12 +17,12 @@ NEEDS_YARA = pytest.mark.skipif(
 )
 
 MARKER_RULE = """\
-rule cerberus_test_rule: test_tag {{
+rule cerberus_test_rule: test_tag {
     strings:
         $a = "CERBERUS-MARKER"
     condition:
         $a
-}}
+}
 """
 
 
