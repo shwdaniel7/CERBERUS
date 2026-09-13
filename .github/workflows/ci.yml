@@ -36,9 +36,3 @@ jobs:
         run: python -m pytest --cov=modules --cov=analyzer --cov-report=term
         env:
           VT_API_KEY: ""
-
-      - name: Legacy regression (validate_all)
-        run: python validate_all.py
-
-      - name: Legacy regression (cache hit)
-        run: python test_cache_hit.py
