@@ -13,7 +13,8 @@ from modules.reports import list_analysis_history, save_batch_summary, clear_his
 from modules.risk import calculate_risk
 from modules.analysis_cache import AnalysisCache
 from modules.analysis_events import AnalysisEvent, emit_event
-from modules.file_metrics import read_analysis_buffer
+from modules.file_metrics import read_analysis_buffer, DEFAULT_MAX_FILE_SIZE
+from modules.settings_store import load_settings
 from modules.reports import CERBERUS_VERSION
 from modules.batch import collect_candidates, run_batch_analysis
 from modules.colors import (
@@ -126,6 +127,8 @@ def print_section(title):
 def analyze_file(selected_file, config, show_details=True):
     byte_size = os.path.getsize(selected_file)
     max_file_size = config.get("max_file_size")
+    if max_file_size is None:
+        max_file_size = DEFAULT_MAX_FILE_SIZE
     if max_file_size and byte_size > max_file_size:
         raise ValueError(
             f"File exceeds configured limit ({byte_size} > {max_file_size} bytes)"
@@ -456,33 +459,34 @@ def build_cli_parser():
     scan_mode.add_argument("--quick", action="store_true", help="run blacklist and file-type checks")
     scan_mode.add_argument("--clear-history", action="store_true", help="clear all analysis reports and history")
     parser.add_argument("--no-virustotal", action="store_true", help="disable VirusTotal queries")
-    parser.add_argument("--report", choices=("all", "json", "csv", "html"), default="all", help="report format")
-    parser.add_argument("--output", default="reports", help="report output directory")
+    parser.add_argument("--report", choices=("all", "json", "csv", "html"), default=None, help="report format (default: settings or all)")
+    parser.add_argument("--output", default=None, help="report output directory (default: settings or reports)")
     parser.add_argument("--quiet", action="store_true", help="suppress progress and detailed output")
-    parser.add_argument("--workers", type=int, default=1, help="parallel workers for batch mode")
+    parser.add_argument("--workers", type=int, default=None, help="parallel workers for batch mode (default: settings or 4)")
     parser.add_argument("--no-cache", action="store_true", help="disable the persistent analysis cache")
-    parser.add_argument("--max-file-size", type=int, help="skip files larger than this many bytes")
+    parser.add_argument("--max-file-size", type=int, help="skip files larger than this many bytes (0 = unlimited)")
     parser.add_argument("--include-cache", action="store_true", help="also clear the analysis cache when using --clear-history")
     return parser
 
 
 def cli_config(args):
+    settings = load_settings()
     quick = args.quick
     return {
-        "blacklist": True,
-        "virustotal": not args.no_virustotal and not quick,
-        "strings": not quick,
-        "ioc_extract": not quick,
-        "entropy": not quick,
-        "magic_numbers": True,
-        "pe_analysis": not quick,
+        "blacklist": bool(settings.get("blacklist", True)),
+        "virustotal": not args.no_virustotal and not quick and bool(settings.get("virustotal", True)),
+        "strings": not quick and bool(settings.get("strings", True)),
+        "ioc_extract": not quick and bool(settings.get("ioc_extract", True)),
+        "entropy": not quick and bool(settings.get("entropy", True)),
+        "magic_numbers": bool(settings.get("magic_numbers", True)),
+        "pe_analysis": not quick and bool(settings.get("pe_analysis", True)),
         "gerar_report": True,
-        "report_format": args.report,
-        "output_dir": args.output,
+        "report_format": args.report or settings.get("report_format", "all"),
+        "output_dir": args.output or settings.get("output_dir", "reports"),
         "quiet": args.quiet,
-        "workers": max(1, args.workers),
-        "cache_enabled": not args.no_cache,
-        "max_file_size": args.max_file_size,
+        "workers": max(1, args.workers if args.workers is not None else int(settings.get("workers", 4))),
+        "cache_enabled": not args.no_cache and bool(settings.get("cache_enabled", True)),
+        "max_file_size": args.max_file_size if args.max_file_size is not None else settings.get("max_file_size"),
         "virustotal_suspicious_only": False,
     }
 
@@ -517,7 +521,7 @@ def main():
         if args.clear_history:
             if not args.quiet:
                 print_banner()
-            result = clear_history(args.output, include_cache=args.include_cache)
+            result = clear_history(args.output or "reports", include_cache=args.include_cache)
             print(f"[+] Deleted {result['deleted']} report file(s)")
             if result['cache_cleared']:
                 print("[+] Analysis cache cleared")

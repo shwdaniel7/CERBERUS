@@ -1,6 +1,8 @@
 import os
 import json
 import queue
+import subprocess
+import sys
 import threading
 import time
 import tkinter as tk
@@ -11,6 +13,7 @@ from modules.reports import save_batch_summary
 from modules.batch import collect_candidates, run_batch_analysis
 from modules.magic_numbers import analyze_file_type
 from modules.hashes import calc_sha256
+from modules.settings_store import load_settings, save_settings
 
 
 COLORS = {
@@ -26,6 +29,16 @@ COLORS = {
     "text": "#edf0f4",
     "muted": "#929aa8",
 }
+
+ENGINE_OPTIONS = (
+    ("blacklist", "Local blacklist"),
+    ("virustotal", "VirusTotal"),
+    ("magic_numbers", "File type / magic"),
+    ("entropy", "Entropy / packers"),
+    ("strings", "Strings"),
+    ("pe_analysis", "PE sections"),
+    ("ioc_extract", "IOC extraction"),
+)
 
 
 class Tooltip:
@@ -86,6 +99,7 @@ class CerberusApp(tk.Tk):
         self.geometry("1240x780")
         self.minsize(980, 650)
         self.configure(background=COLORS["bg"])
+        self.settings = load_settings()
         self._set_application_icon()
         self._configure_styles()
         self._build_layout()
@@ -123,6 +137,8 @@ class CerberusApp(tk.Tk):
         style.map("Action.TButton", background=[("active", COLORS["red"]), ("disabled", COLORS["border"])])
         style.configure("Secondary.TButton", background=COLORS["surface_alt"], foreground=COLORS["text"], borderwidth=1, padding=(12, 7), font=("Segoe UI", 9))
         style.map("Secondary.TButton", background=[("active", COLORS["border"])])
+        style.configure("Engine.TCheckbutton", background=COLORS["surface"], foreground=COLORS["text"], font=("Segoe UI", 9))
+        style.map("Engine.TCheckbutton", background=[("active", COLORS["surface"])])
         style.configure("Accent.Horizontal.TProgressbar", troughcolor=COLORS["border"], background=COLORS["red"], bordercolor=COLORS["border"], lightcolor=COLORS["red"], darkcolor=COLORS["red"])
         style.configure("Treeview", background=COLORS["surface"], fieldbackground=COLORS["surface"], foreground=COLORS["text"], borderwidth=0, rowheight=28, font=("Segoe UI", 9))
         style.configure("Treeview.Heading", background=COLORS["surface_alt"], foreground=COLORS["muted"], relief="flat", font=("Segoe UI", 8, "bold"))
@@ -143,13 +159,24 @@ class CerberusApp(tk.Tk):
         controls.pack(side="right", anchor="n")
         self.open_button = ttk.Button(controls, text="Open file", command=self._choose_file, style="Secondary.TButton")
         self.open_button.pack(side="left", padx=(0, 8))
-        self.quick_button = ttk.Button(controls, text="Quick scan", command=lambda: self._start_scan(True), style="Secondary.TButton")
+        self.path_entry = ttk.Entry(controls, width=28)
+        self.path_entry.insert(0, "Paste full path...")
+        self.path_entry.pack(side="left", padx=(0, 4))
+        self.path_entry.bind("<Return>", lambda _event: self._set_path_entry())
+        self.path_entry.bind("<FocusIn>", self._select_path_entry)
+        self.set_path_button = ttk.Button(controls, text="Set", command=self._set_path_entry, style="Secondary.TButton")
+        self.set_path_button.pack(side="left", padx=(0, 8))
+        self.selected_button = ttk.Button(controls, text="Run selected", command=self._start_selected, style="Secondary.TButton")
+        self.selected_button.pack(side="left", padx=(0, 8))
+        self.quick_button = ttk.Button(controls, text="Quick scan", command=self._start_quick, style="Secondary.TButton")
         self.quick_button.pack(side="left", padx=(0, 8))
-        self.full_button = ttk.Button(controls, text="Full scan", command=lambda: self._start_scan(False), style="Action.TButton")
+        self.full_button = ttk.Button(controls, text="Full scan", command=self._start_full, style="Action.TButton")
         self.full_button.pack(side="left")
         self._add_button_behavior(self.open_button, "Open a file for static analysis (Ctrl+O)")
-        self._add_button_behavior(self.quick_button, "Run the lightweight local scan (F5)")
-        self._add_button_behavior(self.full_button, "Run the complete evidence scan (Ctrl+Enter)")
+        self._add_button_behavior(self.set_path_button, "Analyze the path pasted in the field")
+        self._add_button_behavior(self.selected_button, "Run with the engines selected below")
+        self._add_button_behavior(self.quick_button, "Preset lightweight profile and scan (F5)")
+        self._add_button_behavior(self.full_button, "Preset full profile and scan (Ctrl+Enter)")
 
         navigation = ttk.Frame(root, style="Surface.TFrame", padding=(10, 8))
         navigation.pack(fill="x", pady=(0, 14))
@@ -166,6 +193,16 @@ class CerberusApp(tk.Tk):
         self.status_label = ttk.Label(target, text="READY", foreground=COLORS["green"], background=COLORS["surface"], font=("Segoe UI", 8, "bold"))
         self.status_label.pack(anchor="e")
 
+        profile = ttk.Frame(root, style="Surface.TFrame", padding=(16, 10))
+        ttk.Label(profile, text="ENGINES", foreground=COLORS["red"], background=COLORS["surface"], font=("Segoe UI", 8, "bold")).pack(side="left")
+        self.engine_vars = {}
+        for key, label in ENGINE_OPTIONS:
+            var = tk.BooleanVar(value=bool(self.settings.get(key, True)))
+            self.engine_vars[key] = var
+            ttk.Checkbutton(profile, text=label, variable=var, style="Engine.TCheckbutton").pack(side="left", padx=12)
+        ttk.Label(profile, text="Toggle engines for a custom scan. Quick/Full preset them.", foreground=COLORS["muted"], background=COLORS["surface"], font=("Segoe UI", 8)).pack(side="right")
+        self.profile_frame = profile
+
         content = ttk.Frame(root, style="App.TFrame")
         content.pack(fill="both", expand=True)
         content.columnconfigure(0, weight=3)
@@ -180,7 +217,7 @@ class CerberusApp(tk.Tk):
         self._build_evidence()
         self._build_verdict()
 
-        self.view_widgets["analysis"] = (target, content)
+        self.view_widgets["analysis"] = (target, self.profile_frame, content)
 
         footer = ttk.Frame(root, style="App.TFrame")
         footer.pack(fill="x", pady=(14, 0))
@@ -223,9 +260,19 @@ class CerberusApp(tk.Tk):
         header.pack(fill="x", pady=(0, 14))
         ttk.Label(header, text="HISTORY", style="PanelTitle.TLabel").pack(side="left")
         ttk.Label(header, text="Previous JSON analyses", style="Muted.TLabel").pack(side="left", padx=(12, 0))
-        ttk.Button(header, text="Clear History", command=self._clear_history, style="Secondary.TButton").pack(side="right")
-        self.history_text = tk.Text(view, background=COLORS["surface"], foreground=COLORS["text"], relief="flat", borderwidth=0, wrap="word", font=("Consolas", 9), state="disabled")
-        self.history_text.pack(fill="both", expand=True)
+        actions = ttk.Frame(header, style="Surface.TFrame")
+        actions.pack(side="right")
+        ttk.Button(actions, text="View JSON", command=self._view_history_json, style="Secondary.TButton").pack(side="left", padx=(0, 8))
+        ttk.Button(actions, text="Open report", command=self._open_history_report, style="Secondary.TButton").pack(side="left", padx=(0, 8))
+        ttk.Button(actions, text="Open folder", command=self._open_reports_folder, style="Secondary.TButton").pack(side="left", padx=(0, 8))
+        ttk.Button(actions, text="Clear History", command=self._clear_history, style="Secondary.TButton").pack(side="left")
+        self.history_tree = ttk.Treeview(view, columns=("date", "file", "risk", "score"), show="headings")
+        for column, title, width in (("date", "DATE", 150), ("file", "FILE", 340), ("risk", "RISK", 100), ("score", "SCORE", 80)):
+            self.history_tree.heading(column, text=title)
+            self.history_tree.column(column, width=width, anchor="w")
+        self.history_tree.pack(fill="both", expand=True)
+        self.history_tree.bind("<Double-1>", lambda _event: self._view_history_json())
+        self.history_paths = {}
         return view
 
     def _build_reports_view(self, parent):
@@ -234,21 +281,98 @@ class CerberusApp(tk.Tk):
         header.pack(fill="x", pady=(0, 14))
         ttk.Label(header, text="REPORTS", style="PanelTitle.TLabel").pack(side="left")
         ttk.Label(header, text="Generated JSON, CSV, and HTML reports", style="Muted.TLabel").pack(side="left", padx=(12, 0))
-        ttk.Button(header, text="Clear Reports", command=self._clear_reports, style="Secondary.TButton").pack(side="right")
-        self.reports_text = tk.Text(view, background=COLORS["surface"], foreground=COLORS["text"], relief="flat", borderwidth=0, wrap="word", font=("Consolas", 9), state="disabled")
-        self.reports_text.pack(fill="both", expand=True)
+        actions = ttk.Frame(header, style="Surface.TFrame")
+        actions.pack(side="right")
+        ttk.Button(actions, text="Open report", command=self._open_reports_file, style="Secondary.TButton").pack(side="left", padx=(0, 8))
+        ttk.Button(actions, text="Open folder", command=self._open_reports_folder, style="Secondary.TButton").pack(side="left", padx=(0, 8))
+        ttk.Button(actions, text="Clear Reports", command=self._clear_reports, style="Secondary.TButton").pack(side="left")
+        self.reports_tree = ttk.Treeview(view, columns=("file", "kind", "size"), show="headings")
+        for column, title, width in (("file", "FILE", 380), ("kind", "KIND", 90), ("size", "SIZE", 110)):
+            self.reports_tree.heading(column, text=title)
+            self.reports_tree.column(column, width=width, anchor="w")
+        self.reports_tree.pack(fill="both", expand=True)
+        self.reports_tree.bind("<Double-1>", lambda _event: self._open_reports_file())
+        self.reports_paths = {}
         return view
 
     def _build_settings_view(self, parent):
         view = ttk.Frame(parent, style="Surface.TFrame", padding=18)
         ttk.Label(view, text="SETTINGS", style="PanelTitle.TLabel").pack(anchor="w")
         ttk.Label(view, text="Operational settings for the analysis core", style="Muted.TLabel").pack(anchor="w", pady=(4, 14))
-        self.settings_text = tk.Text(view, background=COLORS["surface"], foreground=COLORS["text"], relief="flat", borderwidth=0, wrap="word", font=("Consolas", 9), state="disabled")
-        self.settings_text.pack(fill="both", expand=True)
-        self.settings_text.configure(state="normal")
-        self.settings_text.insert("end", "Cache: enabled by default\nBatch workers: configured by the analysis profile\nVirusTotal: controlled by VT_API_KEY\n\nUse CLI flags for advanced automation settings.")
-        self.settings_text.configure(state="disabled")
+        form = ttk.Frame(view, style="Surface.TFrame")
+        form.pack(fill="both", expand=True)
+
+        engines_box = ttk.LabelFrame(form, text="ENGINES", style="Surface.TFrame")
+        engines_box.pack(fill="x", pady=(0, 12))
+        self.settings_engine_vars = {}
+        for key, label in ENGINE_OPTIONS:
+            var = tk.BooleanVar(value=bool(self.settings.get(key, True)))
+            self.settings_engine_vars[key] = var
+            ttk.Checkbutton(engines_box, text=label, variable=var, style="Engine.TCheckbutton").pack(side="left", padx=12)
+
+        runtime_box = ttk.LabelFrame(form, text="RUNTIME", style="Surface.TFrame")
+        runtime_box.pack(fill="x", pady=(0, 12))
+        self.cache_var = tk.BooleanVar(value=bool(self.settings.get("cache_enabled", True)))
+        ttk.Checkbutton(runtime_box, text="Persistent analysis cache", variable=self.cache_var, style="Engine.TCheckbutton").pack(anchor="w")
+        fields = ttk.Frame(runtime_box, style="Surface.TFrame")
+        fields.pack(fill="x", pady=(8, 0))
+        self.max_size_var = tk.StringVar(value=str(int(self.settings.get("max_file_size", 0)) // (1024 * 1024)))
+        self.workers_var = tk.StringVar(value=str(self.settings.get("workers", 4)))
+        self.format_var = tk.StringVar(value=self.settings.get("report_format", "all"))
+        self.output_var = tk.StringVar(value=self.settings.get("output_dir", "reports"))
+        rows = (
+            ("Max file size (MB, 0 = unlimited)", self.max_size_var),
+            ("Batch workers", self.workers_var),
+            ("Report format", self.format_var),
+            ("Report output directory", self.output_var),
+        )
+        for row_number, (label, var) in enumerate(rows):
+            ttk.Label(fields, text=label, style="Muted.TLabel").grid(row=row_number, column=0, sticky="w", padx=(0, 16), pady=4)
+            if label == "Report format":
+                ttk.Combobox(fields, textvariable=var, values=("all", "json", "csv", "html"), state="readonly", width=26).grid(row=row_number, column=1, sticky="w", pady=4)
+            else:
+                ttk.Entry(fields, textvariable=var, width=28).grid(row=row_number, column=1, sticky="w", pady=4)
+        fields.columnconfigure(1, weight=1)
+
+        actions = ttk.Frame(view, style="Surface.TFrame")
+        actions.pack(fill="x", pady=(12, 0))
+        ttk.Button(actions, text="Save settings", command=self._save_settings_form, style="Action.TButton").pack(side="left", padx=(0, 8))
+        ttk.Button(actions, text="Restore defaults", command=self._restore_settings_form, style="Secondary.TButton").pack(side="left")
+        ttk.Label(actions, text="Stored in settings.json. Secrets stay in .env.", style="Muted.TLabel").pack(side="right")
         return view
+
+    def _save_settings_form(self):
+        values = {key: var.get() for key, var in self.settings_engine_vars.items()}
+        values["cache_enabled"] = self.cache_var.get()
+        try:
+            max_mb = int(self.max_size_var.get())
+            workers = int(self.workers_var.get())
+        except ValueError:
+            messagebox.showwarning("Invalid settings", "Max file size and batch workers must be whole numbers.")
+            return
+        if max_mb < 0 or workers < 1:
+            messagebox.showwarning("Invalid settings", "Max file size must be >= 0 and workers >= 1.")
+            return
+        values["max_file_size"] = max_mb * 1024 * 1024
+        values["workers"] = workers
+        values["report_format"] = self.format_var.get()
+        values["output_dir"] = self.output_var.get().strip() or "reports"
+        saved = save_settings(values)
+        self.settings = saved
+        for key, var in self.engine_vars.items():
+            var.set(bool(saved.get(key, True)))
+        self.status_label.configure(text="SETTINGS SAVED", foreground=COLORS["cyan"])
+        messagebox.showinfo("Settings saved", "Settings saved to settings.json and applied to future scans.")
+
+    def _restore_settings_form(self):
+        for var in self.settings_engine_vars.values():
+            var.set(True)
+        self.cache_var.set(True)
+        self.max_size_var.set("200")
+        self.workers_var.set("4")
+        self.format_var.set("all")
+        self.output_var.set("reports")
+        messagebox.showinfo("Defaults restored", "Form restored to defaults. Press Save settings to apply them.")
 
     def _add_button_behavior(self, button, tooltip):
         Tooltip(button, tooltip)
@@ -257,8 +381,8 @@ class CerberusApp(tk.Tk):
 
     def _bind_shortcuts(self):
         self.bind("<Control-o>", lambda _event: self._choose_file())
-        self.bind("<F5>", lambda _event: self._start_scan(True))
-        self.bind("<Control-Return>", lambda _event: self._start_scan(False))
+        self.bind("<F5>", lambda _event: self._start_quick())
+        self.bind("<Control-Return>", lambda _event: self._start_full())
 
     def _simple_view(self, parent, title, subtitle):
         view = ttk.Frame(parent, style="Surface.TFrame", padding=18)
@@ -274,7 +398,8 @@ class CerberusApp(tk.Tk):
                 widget.pack_forget()
         if view_name == "analysis":
             self.view_widgets["analysis"][0].pack(fill="x", pady=(0, 16))
-            self.view_widgets["analysis"][1].pack(fill="both", expand=True)
+            self.view_widgets["analysis"][1].pack(fill="x", pady=(0, 16))
+            self.view_widgets["analysis"][2].pack(fill="both", expand=True)
         else:
             self.view_widgets[view_name][0].pack(fill="both", expand=True)
         self.active_view = view_name
@@ -293,26 +418,124 @@ class CerberusApp(tk.Tk):
         text_widget.configure(state="disabled")
 
     def _load_history(self):
-        reports_dir = "reports"
+        reports_dir = self.settings.get("output_dir", "reports")
+        for item in self.history_tree.get_children():
+            self.history_tree.delete(item)
+        self.history_paths.clear()
+        if not os.path.isdir(reports_dir):
+            return
         entries = []
-        if os.path.isdir(reports_dir):
-            for filename in sorted(os.listdir(reports_dir), reverse=True):
-                if not filename.endswith(".json") or filename.startswith("batch_summary"):
-                    continue
-                try:
-                    with open(os.path.join(reports_dir, filename), encoding="utf-8") as report_file:
-                        data = json.load(report_file)
-                    risk = data.get("risk_summary", {})
-                    metadata = data.get("metadata", {})
-                    entries.append(f"{metadata.get('analysis_date', '-')}  |  {metadata.get('archive_name', filename)}  |  {risk.get('level', 'Unknown')} ({risk.get('score', '-')}/100)")
-                except (OSError, json.JSONDecodeError):
-                    continue
-        self._write_view_text(self.history_text, "\n".join(entries) if entries else "No analysis history found.")
+        for filename in os.listdir(reports_dir):
+            if not filename.endswith(".json") or filename.startswith("batch_summary"):
+                continue
+            try:
+                with open(os.path.join(reports_dir, filename), encoding="utf-8") as report_file:
+                    data = json.load(report_file)
+            except (OSError, json.JSONDecodeError):
+                continue
+            risk = data.get("risk_summary", {})
+            metadata = data.get("metadata", {})
+            entries.append((
+                metadata.get("analysis_date", "-"),
+                metadata.get("archive_name", filename),
+                risk.get("level", "Unknown"),
+                f"{risk.get('score', '-')}/100",
+                filename,
+            ))
+        entries.sort(key=lambda item: item[0], reverse=True)
+        for date, name, level, score, filename in entries:
+            iid = self.history_tree.insert("", "end", values=(date, name, level, score))
+            self.history_paths[iid] = (reports_dir, filename)
 
     def _load_reports(self):
-        reports_dir = "reports"
-        entries = sorted(os.listdir(reports_dir)) if os.path.isdir(reports_dir) else []
-        self._write_view_text(self.reports_text, "\n".join(entries) if entries else "No reports found.")
+        reports_dir = self.settings.get("output_dir", "reports")
+        for item in self.reports_tree.get_children():
+            self.reports_tree.delete(item)
+        self.reports_paths.clear()
+        if not os.path.isdir(reports_dir):
+            return
+        for filename in sorted(os.listdir(reports_dir)):
+            filepath = os.path.join(reports_dir, filename)
+            if not os.path.isfile(filepath):
+                continue
+            size = os.path.getsize(filepath)
+            kind = os.path.splitext(filename)[1].lstrip(".").upper() or "FILE"
+            iid = self.reports_tree.insert("", "end", values=(filename, kind, f"{size:,} bytes"))
+            self.reports_paths[iid] = filepath
+
+    @staticmethod
+    def _open_with_os(path):
+        try:
+            if sys.platform == "win32":
+                os.startfile(path)
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", path])
+            else:
+                subprocess.Popen(["xdg-open", path])
+        except OSError as error:
+            messagebox.showerror("Cannot open", str(error))
+
+    def _selected_history_item(self):
+        selection = self.history_tree.selection()
+        if not selection:
+            messagebox.showinfo("No selection", "Select a report from the list first.")
+            return None
+        return self.history_paths.get(selection[0])
+
+    def _view_history_json(self):
+        selected = self._selected_history_item()
+        if not selected:
+            return
+        reports_dir, filename = selected
+        path = os.path.join(reports_dir, filename)
+        try:
+            with open(path, encoding="utf-8") as report_file:
+                data = json.load(report_file)
+        except (OSError, json.JSONDecodeError) as error:
+            messagebox.showerror("Cannot open report", f"{filename}: {error}")
+            return
+        popup = tk.Toplevel(self)
+        popup.title(f"CERBERUS Report - {filename}")
+        popup.geometry("760x560")
+        popup.configure(background=COLORS["surface"])
+        frame = ttk.Frame(popup, style="Surface.TFrame", padding=12)
+        frame.pack(fill="both", expand=True)
+        view = tk.Text(frame, background=COLORS["surface"], foreground=COLORS["text"], relief="flat", borderwidth=0, wrap="none", font=("Consolas", 9), state="disabled")
+        scroll_y = ttk.Scrollbar(frame, orient="vertical", command=view.yview)
+        view.configure(yscrollcommand=scroll_y.set)
+        scroll_y.pack(side="right", fill="y")
+        view.pack(side="left", fill="both", expand=True)
+        view.configure(state="normal")
+        view.insert("end", json.dumps(data, indent=2, ensure_ascii=False))
+        view.configure(state="disabled")
+
+    def _open_history_report(self):
+        selected = self._selected_history_item()
+        if not selected:
+            return
+        reports_dir, filename = selected
+        if filename.endswith(".json"):
+            base = filename[:-5]
+            for candidate in (f"{base}.html", f"{base}.csv", filename):
+                path = os.path.join(reports_dir, candidate)
+                if os.path.isfile(path):
+                    self._open_with_os(path)
+                    return
+        self._open_with_os(os.path.join(reports_dir, filename))
+
+    def _open_reports_file(self):
+        selection = self.reports_tree.selection()
+        if not selection:
+            messagebox.showinfo("No selection", "Select a report from the list first.")
+            return
+        path = self.reports_paths.get(selection[0])
+        if path:
+            self._open_with_os(path)
+
+    def _open_reports_folder(self):
+        reports_dir = self.settings.get("output_dir", "reports")
+        os.makedirs(reports_dir, exist_ok=True)
+        self._open_with_os(reports_dir)
 
     def _load_iocs(self):
         details = inspect_ioc_lists()
@@ -327,7 +550,7 @@ class CerberusApp(tk.Tk):
         if not messagebox.askyesno("Clear History", "Delete all analysis history (JSON reports)?\nThis cannot be undone."):
             return
         from modules.reports import clear_history
-        result = clear_history("reports", include_cache=False)
+        result = clear_history(self.settings.get("output_dir", "reports"), include_cache=False)
         self._load_history()
         messagebox.showinfo("History Cleared", f"Deleted {result['deleted']} history file(s).")
 
@@ -335,7 +558,7 @@ class CerberusApp(tk.Tk):
         if not messagebox.askyesno("Clear Reports", "Delete ALL reports (JSON, CSV, HTML) and batch summaries?\nThis cannot be undone."):
             return
         from modules.reports import clear_history
-        result = clear_history("reports", include_cache=False)
+        result = clear_history(self.settings.get("output_dir", "reports"), include_cache=False)
         self._load_reports()
         self._load_history()
         messagebox.showinfo("Reports Cleared", f"Deleted {result['deleted']} report file(s).")
@@ -354,22 +577,23 @@ class CerberusApp(tk.Tk):
     def _run_batch(self, folder):
         candidates, skipped = collect_candidates(folder)
 
-        worker_count = min(4, max(1, os.cpu_count() or 1))
+        worker_count = max(1, min(int(self.settings.get("workers", 4)), os.cpu_count() or 1))
 
         config = {
-            "blacklist": True,
+            "blacklist": bool(self.settings.get("blacklist", True)),
             "virustotal": False,
-            "strings": True,
-            "ioc_extract": True,
-            "entropy": True,
-            "magic_numbers": True,
-            "pe_analysis": True,
+            "strings": bool(self.settings.get("strings", True)),
+            "ioc_extract": bool(self.settings.get("ioc_extract", True)),
+            "entropy": bool(self.settings.get("entropy", True)),
+            "magic_numbers": bool(self.settings.get("magic_numbers", True)),
+            "pe_analysis": bool(self.settings.get("pe_analysis", True)),
             "gerar_report": True,
             "report_format": "json",
-            "output_dir": "reports",
+            "output_dir": self.settings.get("output_dir", "reports"),
             "quiet": True,
             "workers": worker_count,
-            "cache_enabled": True,
+            "cache_enabled": bool(self.settings.get("cache_enabled", True)),
+            "max_file_size": self.settings.get("max_file_size"),
             "minimum_report_score": 50,
             "virustotal_suspicious_only": True,
         }
@@ -486,10 +710,25 @@ class CerberusApp(tk.Tk):
     def _choose_file(self):
         filepath = filedialog.askopenfilename(title="Select a file to analyze")
         if filepath:
-            self.selected_file = filepath
-            self.target_label.configure(text=filepath, foreground=COLORS["text"])
-            self.status_label.configure(text="READY", foreground=COLORS["green"])
-            self._populate_identity(filepath)
+            self._set_target(filepath)
+
+    def _select_path_entry(self, _event=None):
+        self.path_entry.selection_range(0, "end")
+
+    def _set_path_entry(self):
+        candidate = self.path_entry.get().strip()
+        if not candidate or candidate == "Paste full path...":
+            return
+        if os.path.isfile(candidate):
+            self._set_target(candidate)
+        else:
+            messagebox.showwarning("Invalid path", "The provided path is not a file on disk.")
+
+    def _set_target(self, filepath):
+        self.selected_file = filepath
+        self.target_label.configure(text=filepath, foreground=COLORS["text"])
+        self.status_label.configure(text="READY", foreground=COLORS["green"])
+        self._populate_identity(filepath)
 
     def _populate_identity(self, filepath):
         try:
@@ -558,29 +797,60 @@ class CerberusApp(tk.Tk):
             self.clipboard_append(value)
             self.status_label.configure(text="HASH COPIED", foreground=COLORS["cyan"])
 
-    def _start_scan(self, quick):
+    def _set_profile(self, quick):
+        if quick:
+            presets = {
+                "blacklist": True,
+                "virustotal": False,
+                "strings": False,
+                "ioc_extract": False,
+                "entropy": False,
+                "magic_numbers": True,
+                "pe_analysis": False,
+            }
+        else:
+            presets = {key: True for key, _ in ENGINE_OPTIONS}
+        for key, value in presets.items():
+            self.engine_vars[key].set(value)
+
+    def _start_quick(self):
+        self._set_profile(True)
+        self._start_scan()
+
+    def _start_full(self):
+        self._set_profile(False)
+        self._start_scan()
+
+    def _start_selected(self):
+        self._start_scan()
+
+    def _start_scan(self):
         if not self.selected_file:
             self._choose_file()
         if not self.selected_file or (self.analysis_thread and self.analysis_thread.is_alive()):
+            return
+        if not any(var.get() for var in self.engine_vars.values()):
+            messagebox.showwarning("No engine selected", "Select at least one analysis engine.")
             return
 
         self._reset_view()
         self._set_controls(False)
         self.status_label.configure(text="ANALYZING", foreground=COLORS["yellow"])
         config = {
-            "blacklist": True,
-            "virustotal": not quick,
-            "strings": not quick,
-            "ioc_extract": not quick,
-            "entropy": not quick,
-            "magic_numbers": True,
-            "pe_analysis": not quick,
+            "blacklist": self.engine_vars["blacklist"].get(),
+            "virustotal": self.engine_vars["virustotal"].get(),
+            "strings": self.engine_vars["strings"].get(),
+            "ioc_extract": self.engine_vars["ioc_extract"].get(),
+            "entropy": self.engine_vars["entropy"].get(),
+            "magic_numbers": self.engine_vars["magic_numbers"].get(),
+            "pe_analysis": self.engine_vars["pe_analysis"].get(),
             "gerar_report": True,
-            "report_format": "all",
-            "output_dir": "reports",
+            "report_format": self.settings.get("report_format", "all"),
+            "output_dir": self.settings.get("output_dir", "reports"),
             "quiet": True,
-            "workers": 1,
-            "cache_enabled": True,
+            "workers": max(1, int(self.settings.get("workers", 4))),
+            "cache_enabled": bool(self.settings.get("cache_enabled", True)),
+            "max_file_size": self.settings.get("max_file_size"),
             "virustotal_suspicious_only": False,
             "event_callback": self.events.put,
         }
@@ -881,8 +1151,10 @@ class CerberusApp(tk.Tk):
 
     def _set_controls(self, enabled):
         state = "normal" if enabled else "disabled"
-        for button in (self.open_button, self.quick_button, self.full_button):
+        entry_state = "normal" if enabled else "disabled"
+        for button in (self.open_button, self.quick_button, self.full_button, self.selected_button, self.set_path_button):
             button.configure(state=state)
+        self.path_entry.configure(state=entry_state)
 
 
 def launch_gui(analyzer):

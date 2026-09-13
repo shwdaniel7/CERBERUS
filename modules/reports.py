@@ -7,6 +7,23 @@ from datetime import datetime
 
 CERBERUS_VERSION = "1.0.0"
 
+CSV_FORMULA_LEADING = ("=", "+", "-", "@")
+
+
+def _sanitize_csv_value(value):
+    """Neutralize spreadsheet formula injection.
+
+    Cells starting with ``= + - @`` (or a leading tab/control character) are
+    interpreted by spreadsheet applications as formulas or DDE links. Any
+    value whose first character could trigger that behavior is prefixed with
+    a single quote so it is displayed as plain text.
+    """
+    if not isinstance(value, str):
+        return value
+    if value and (value[0] in CSV_FORMULA_LEADING or value[0] in "\t\r\n"):
+        return "'" + value
+    return value
+
 
 def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration, iocs=None, packer_analysis=None, pe_analysis=None, file_type_analysis=None, engine_times=None):
     reports_folder = config_choices.get("output_dir", "reports")
@@ -141,10 +158,11 @@ def save_csv_report(report_data, reports_folder, base_name, short_hash):
         "vt_undetected": report_data["virustotal_analysis"].get("undetected", 0) if isinstance(report_data["virustotal_analysis"], dict) else 0,
         "analysis_duration_seconds": metadata["analysis_duration_seconds"],
     }
+    sanitized_row = {key: _sanitize_csv_value(value) for key, value in row.items()}
     with open(csv_path, "w", newline="", encoding="utf-8-sig") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=row.keys())
+        writer = csv.DictWriter(csv_file, fieldnames=sanitized_row.keys())
         writer.writeheader()
-        writer.writerow(row)
+        writer.writerow(sanitized_row)
 
 
 def save_html_report(report_data, reports_folder, base_name, short_hash):
