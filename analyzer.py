@@ -227,6 +227,7 @@ def analyze_file(selected_file, config, show_details=True):
     pe_analysis = {"status": "not_executed", "sections": []}
     yara_analysis = None
     deobf_analysis = None
+    fuzzy_analysis = None
     shared_metrics = None
     shared_content = None
 
@@ -240,6 +241,7 @@ def analyze_file(selected_file, config, show_details=True):
         bool(config.get("pe_analysis")),
         bool(config.get("ioc_extract")),
         bool(config.get("deobfuscation")),
+        bool(config.get("fuzzy")),
         bool(config.get("yara")),
         bool(config["virustotal"]),
     ))
@@ -429,6 +431,28 @@ def analyze_file(selected_file, config, show_details=True):
             print()
         engine_done("YARA rules", engine_started)
 
+    if config.get("fuzzy"):
+        engine_started = engine_start("TLSH fuzzy similarity")
+        if show_details:
+            print_section("Fuzzy Similarity")
+        if shared_content is None and shared_metrics is None:
+            shared_content, shared_metrics = read_analysis_buffer(
+                selected_file, compute_histogram=config["entropy"]
+            )
+        from modules.fuzzy_engine import scan_similarity
+        fuzzy_analysis = scan_similarity(selected_file, config, content=shared_content)
+        if show_details:
+            if not fuzzy_analysis.get("available"):
+                print(paint_yellow(f"[-] TLSH unavailable: {fuzzy_analysis.get('error')}"))
+            elif fuzzy_analysis.get("status") == "no_hash":
+                print(paint_yellow("[-] No TLSH hash (file too short or lacks variation)."))
+            else:
+                for entry in fuzzy_analysis["matches"]:
+                    print(f"  -> {paint_yellow(entry['label'])} (distance {entry['distance']})")
+                print(f"Fuzzy matches: {paint_yellow(fuzzy_analysis['match_count'])}")
+            print()
+        engine_done("TLSH fuzzy similarity", engine_started)
+
     deobf_stripped = (
         {key: value for key, value in deobf_analysis.items() if key != "feed_blobs"}
         if deobf_analysis else None
@@ -439,6 +463,7 @@ def analyze_file(selected_file, config, show_details=True):
         or magic_alert
         or bool(deobf_stripped and deobf_stripped.get("flagged"))
         or bool(yara_analysis and yara_analysis.get("match_count"))
+        or bool(fuzzy_analysis and fuzzy_analysis.get("match_count"))
         or any(extracted_iocs.get(category) for category in ("suspicious_paths", "powershell_commands", "cmd_commands"))
     )
     should_query_virustotal = config["virustotal"] and virustotal_available() and (
@@ -469,6 +494,7 @@ def analyze_file(selected_file, config, show_details=True):
         in_blacklist, result_vt, entropy_status, alerts, magic_alert,
         extracted_iocs, yara_matches=(yara_analysis or {}).get("matches") or None,
         deobfuscation_analysis=deobf_stripped,
+        fuzzy_analysis=fuzzy_analysis,
     )
     analysis_duration = round(time.perf_counter() - analysis_start, 3)
     progress.finish()
@@ -481,7 +507,8 @@ def analyze_file(selected_file, config, show_details=True):
             in_blacklist, config, entropy_score, entropy_status, real_type,
             magic_alert, risk, analysis_duration, extracted_iocs, packer_analysis,
             pe_analysis, file_type_analysis, yara_analysis=yara_analysis,
-            deobfuscation_analysis=deobf_stripped, engine_times=engine_times
+            deobfuscation_analysis=deobf_stripped, fuzzy_analysis=fuzzy_analysis,
+            engine_times=engine_times
         )
     result = {
         "file": os.path.basename(selected_file),
@@ -507,6 +534,7 @@ def analyze_file(selected_file, config, show_details=True):
             "pe_analysis": pe_analysis,
             "yara": yara_analysis,
             "deobfuscation": deobf_stripped,
+            "fuzzy": fuzzy_analysis,
             "virustotal": result_vt,
             "blacklist_match": bool(in_blacklist),
             "magic_alert": magic_alert,
@@ -598,6 +626,7 @@ def cli_config(args):
         "magic_numbers": bool(settings.get("magic_numbers", True)),
         "pe_analysis": not quick and bool(settings.get("pe_analysis", True)),
         "deobfuscation": not quick and bool(settings.get("deobfuscation", True)),
+        "fuzzy": not quick and bool(settings.get("fuzzy", True)),
         "yara": not quick and bool(settings.get("yara", True)),
         "skip_reparse_points": bool(settings.get("skip_reparse_points", True)),
         "gerar_report": True,

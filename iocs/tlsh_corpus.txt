@@ -1,0 +1,14 @@
+# TLSH fuzzy-hash corpus for the `fuzzy` engine.
+#
+# Format: one entry per line:
+#     <tlsh-hex> <label>
+#
+# <tlsh-hex> is a 70-character TLSH digest (lower- or upper-case hex).
+# <label> is a free-text description shown in reports, e.g. the original
+# sample name or family. Lines starting with '#' and blank lines are ignored;
+# lines without a valid hex digest are skipped.
+#
+# Populate this file with hashes of known samples, e.g.:
+# pip install py-tlsh
+# python -c "import tlsh,sys; t=tlsh.Tlsh(); t.update(open(sys.argv[1],'rb').read()); t.final(); print(t.hexdigest())" sample.exe
+#

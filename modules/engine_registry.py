@@ -77,6 +77,13 @@ _ENGINES = [
         description="Detect and decode Base64 blobs and single-byte XOR content.",
     ),
     Engine(
+        "fuzzy",
+        "TLSH fuzzy similarity",
+        "fuzzy",
+        optional=True,
+        description="Compare the file's TLSH fuzzy hash against iocs/tlsh_corpus.txt (requires py-tlsh).",
+    ),
+    Engine(
         "yara",
         "YARA rules",
         "yara",
