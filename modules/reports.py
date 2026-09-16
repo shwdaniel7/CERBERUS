@@ -25,7 +25,7 @@ def _sanitize_csv_value(value):
     return value
 
 
-def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration, iocs=None, packer_analysis=None, pe_analysis=None, file_type_analysis=None, yara_analysis=None, deobfuscation_analysis=None, fuzzy_analysis=None, zip_analysis=None, engine_times=None):
+def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, detected_bl, config_choices, entropy_score, entropy_status, real_type, magic_alert, risk, analysis_duration, iocs=None, packer_analysis=None, pe_analysis=None, file_type_analysis=None, yara_analysis=None, deobfuscation_analysis=None, fuzzy_analysis=None, zip_analysis=None, authenticode_analysis=None, engine_times=None):
     reports_folder = config_choices.get("output_dir", "reports")
     report_format = config_choices.get("report_format", "all")
     os.makedirs(reports_folder, exist_ok=True)
@@ -159,6 +159,23 @@ def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, de
     else:
         static_analysis["zip_analysis"] = "Not executed"
 
+    if config_choices.get("authenticode"):
+        static_analysis["authenticode_analysis"] = authenticode_analysis or {
+            "available": True,
+            "status": "no_data",
+            "error": None,
+            "is_pe": False,
+            "signed": False,
+            "block_size": None,
+            "revision": None,
+            "cert_type": None,
+            "subject": None,
+            "issuer": None,
+            "notes": [],
+        }
+    else:
+        static_analysis["authenticode_analysis"] = "Not executed"
+
     if isinstance(result_vt, dict):
         vt_indicators = int(result_vt.get("malicious", 0))
     else:
@@ -169,7 +186,8 @@ def save_report(filepath, kb_size, file_hash, result_vt, alerts, all_strings, de
     decode_flagged = int(bool((deobfuscation_analysis or {}).get("flagged")))
     fuzzy_match_count = int((fuzzy_analysis or {}).get("match_count", 0))
     zip_flagged = int(bool((zip_analysis or {}).get("findings") and any(zip_analysis["findings"].values())))
-    indicator_count = len(alerts) + int(bool(detected_bl)) + int(bool(magic_alert)) + vt_indicators + extracted_ioc_count + yara_match_count + decode_flagged + fuzzy_match_count + zip_flagged
+    authenticode_notes = int(bool((authenticode_analysis or {}).get("notes")))
+    indicator_count = len(alerts) + int(bool(detected_bl)) + int(bool(magic_alert)) + vt_indicators + extracted_ioc_count + yara_match_count + decode_flagged + fuzzy_match_count + zip_flagged + authenticode_notes
     if "INDICATOR" in (entropy_status or ""):
         indicator_count += 1
     static_analysis["indicator_count"] = indicator_count
@@ -224,6 +242,8 @@ def save_csv_report(report_data, reports_folder, base_name, short_hash):
         "tlsh_nearest": (statistics["fuzzy_analysis"] or {}).get("nearest_distance") if isinstance(statistics.get("fuzzy_analysis"), dict) else "",
         "zip_entries": int((statistics["zip_analysis"] or {}).get("entry_count", 0)) if isinstance(statistics.get("zip_analysis"), dict) else 0,
         "zip_suspicious": int(bool((statistics["zip_analysis"] or {}).get("findings") and any(statistics["zip_analysis"]["findings"].values()))) if isinstance(statistics.get("zip_analysis"), dict) else 0,
+        "auth_signed": int(bool((statistics["authenticode_analysis"] or {}).get("signed"))) if isinstance(statistics.get("authenticode_analysis"), dict) else 0,
+        "auth_issuer": (statistics["authenticode_analysis"] or {}).get("issuer") or "" if isinstance(statistics.get("authenticode_analysis"), dict) else "",
         "vt_malicious": report_data["virustotal_analysis"].get("malicious", 0) if isinstance(report_data["virustotal_analysis"], dict) else 0,
         "vt_suspicious": report_data["virustotal_analysis"].get("suspicious", 0) if isinstance(report_data["virustotal_analysis"], dict) else 0,
         "vt_harmless": report_data["virustotal_analysis"].get("harmless", 0) if isinstance(report_data["virustotal_analysis"], dict) else 0,

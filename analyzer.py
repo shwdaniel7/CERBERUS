@@ -229,6 +229,7 @@ def analyze_file(selected_file, config, show_details=True):
     deobf_analysis = None
     fuzzy_analysis = None
     zip_analysis = None
+    authenticode_analysis = None
     shared_metrics = None
     shared_content = None
 
@@ -244,6 +245,7 @@ def analyze_file(selected_file, config, show_details=True):
         bool(config.get("deobfuscation")),
         bool(config.get("fuzzy")),
         bool(config.get("zip")),
+        bool(config.get("authenticode")),
         bool(config.get("yara")),
         bool(config["virustotal"]),
     ))
@@ -315,6 +317,32 @@ def analyze_file(selected_file, config, show_details=True):
                 print(paint_red(magic_alert))
             print()
         engine_done("File type and magic numbers", engine_started)
+
+    if config.get("authenticode"):
+        engine_started = engine_start("Authenticode (PE signatures)")
+        if show_details:
+            print_section("Authenticode")
+        if shared_content is None and shared_metrics is None:
+            shared_content, shared_metrics = read_analysis_buffer(
+                selected_file, compute_histogram=config["entropy"]
+            )
+        from modules.pe_authenticode import analyze_authenticode
+        authenticode_analysis = analyze_authenticode(selected_file, content=shared_content)
+        if show_details:
+            if authenticode_analysis["status"] == "unsigned":
+                print(paint_yellow("[-] PE is not digitally signed."))
+            elif authenticode_analysis["status"] == "no_data":
+                print(paint_dim("    Not a PE; Authenticode not applicable."))
+            elif authenticode_analysis["status"] == "signed":
+                print(f"[+] Signed PE: subject={paint_yellow(authenticode_analysis['subject'])}")
+                if authenticode_analysis["issuer"]:
+                    print(f"    Issuer: {paint_yellow(authenticode_analysis['issuer'])}")
+                if authenticode_analysis["notes"]:
+                    print(paint_red(f"    [!] {authenticode_analysis['error']}"))
+            else:
+                print(paint_red(f"    [!] {authenticode_analysis.get('error')}"))
+            print()
+        engine_done("Authenticode (PE signatures)", engine_started)
 
     if config.get("zip"):
         engine_started = engine_start("Archive recursion (ZIP)")
@@ -491,6 +519,7 @@ def analyze_file(selected_file, config, show_details=True):
         or bool(yara_analysis and yara_analysis.get("match_count"))
         or bool(fuzzy_analysis and fuzzy_analysis.get("match_count"))
         or bool(zip_analysis and zip_analysis.get("findings") and any(zip_analysis["findings"].values()))
+        or bool(authenticode_analysis and authenticode_analysis.get("notes"))
         or any(extracted_iocs.get(category) for category in ("suspicious_paths", "powershell_commands", "cmd_commands"))
     )
     should_query_virustotal = config["virustotal"] and virustotal_available() and (
@@ -523,6 +552,7 @@ def analyze_file(selected_file, config, show_details=True):
         deobfuscation_analysis=deobf_stripped,
         fuzzy_analysis=fuzzy_analysis,
         zip_analysis=zip_analysis,
+        authenticode_analysis=authenticode_analysis,
     )
     analysis_duration = round(time.perf_counter() - analysis_start, 3)
     progress.finish()
@@ -536,7 +566,7 @@ def analyze_file(selected_file, config, show_details=True):
             magic_alert, risk, analysis_duration, extracted_iocs, packer_analysis,
             pe_analysis, file_type_analysis, yara_analysis=yara_analysis,
             deobfuscation_analysis=deobf_stripped, fuzzy_analysis=fuzzy_analysis,
-            zip_analysis=zip_analysis,
+            zip_analysis=zip_analysis, authenticode_analysis=authenticode_analysis,
             engine_times=engine_times
         )
     result = {
@@ -565,6 +595,7 @@ def analyze_file(selected_file, config, show_details=True):
             "deobfuscation": deobf_stripped,
             "fuzzy": fuzzy_analysis,
             "zip": zip_analysis,
+            "authenticode": authenticode_analysis,
             "virustotal": result_vt,
             "blacklist_match": bool(in_blacklist),
             "magic_alert": magic_alert,
@@ -658,6 +689,7 @@ def cli_config(args):
         "deobfuscation": not quick and bool(settings.get("deobfuscation", True)),
         "fuzzy": not quick and bool(settings.get("fuzzy", True)),
         "zip": not quick and bool(settings.get("zip", True)),
+        "authenticode": not quick and bool(settings.get("authenticode", True)),
         "yara": not quick and bool(settings.get("yara", True)),
         "skip_reparse_points": bool(settings.get("skip_reparse_points", True)),
         "gerar_report": True,
