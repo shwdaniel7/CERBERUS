@@ -582,6 +582,7 @@ class CerberusApp(tk.Tk):
             "magic_numbers": bool(self.settings.get("magic_numbers", True)),
             "pe_analysis": bool(self.settings.get("pe_analysis", True)),
             "deobfuscation": bool(self.settings.get("deobfuscation", True)),
+            "fuzzy": bool(self.settings.get("fuzzy", True)),
             "yara": bool(self.settings.get("yara", True)),
             "gerar_report": True,
             "report_format": "json",
@@ -804,6 +805,7 @@ class CerberusApp(tk.Tk):
                 "magic_numbers": True,
                 "pe_analysis": False,
                 "deobfuscation": False,
+                "fuzzy": False,
                 "yara": False,
             }
         else:
@@ -843,6 +845,7 @@ class CerberusApp(tk.Tk):
             "magic_numbers": self.engine_vars["magic_numbers"].get(),
             "pe_analysis": self.engine_vars["pe_analysis"].get(),
             "deobfuscation": self.engine_vars["deobfuscation"].get(),
+            "fuzzy": self.engine_vars["fuzzy"].get(),
             "yara": self.engine_vars["yara"].get(),
             "gerar_report": True,
             "report_format": self.settings.get("report_format", "all"),
@@ -883,6 +886,8 @@ class CerberusApp(tk.Tk):
             names.append("IOC extraction")
         if config["deobfuscation"]:
             names.append("Deobfuscation (Base64/XOR)")
+        if config["fuzzy"]:
+            names.append("TLSH fuzzy similarity")
         if config["yara"]:
             names.append("YARA rules")
         if config["virustotal"]:

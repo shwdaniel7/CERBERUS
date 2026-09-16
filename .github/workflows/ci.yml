@@ -32,6 +32,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-yara.txt -r requirements-dev.txt
 
+      - name: Install optional fuzzy hashing deps (best-effort)
+        continue-on-error: true
+        run: pip install -r requirements-fuzzy.txt
+
       - name: Bootstrapping tests (analyzer + core modules)
         run: python -m pytest --cov=modules --cov=analyzer --cov-report=term
         env:

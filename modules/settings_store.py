@@ -21,6 +21,7 @@ DEFAULT_SETTINGS = {
     "magic_numbers": True,
     "pe_analysis": True,
     "deobfuscation": True,
+    "fuzzy": True,
     "yara": True,
     "skip_reparse_points": True,
     "max_file_size": 200 * 1024 * 1024,

@@ -1,0 +1,5 @@
+# Optional fuzzy-hashing dependency for the `fuzzy` engine (TLSH similarity).
+# py-tlsh is sdist-only on PyPI (needs cmake + a C++ toolchain), so CI
+# installs it best-effort; when it cannot build, the engine degrades and the
+# real-lib tests skip (NEEDS_TLSH). The engine itself has zero hard deps.
+py-tlsh==5.0.0

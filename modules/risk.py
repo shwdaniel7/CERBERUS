@@ -11,8 +11,15 @@ DECODE_FLAGGED_POINTS = 10
 
 DECODE_FLAG_LABEL = "Deobfuscation"
 
+FUZZY_EXACT_DISTANCE = 10
+FUZZY_CLOSE_DISTANCE = 30
+FUZZY_EXACT_POINTS = 20
+FUZZY_CLOSE_POINTS = 10
+FUZZY_LOOSE_POINTS = 5
+FUZZY_LABEL = "Fuzzy similarity"
 
-def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, iocs=None, yara_matches=None, deobfuscation_analysis=None):
+
+def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, iocs=None, yara_matches=None, deobfuscation_analysis=None, fuzzy_analysis=None):
     score = 0
     factors = []
 
@@ -81,6 +88,21 @@ def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert,
             f"{DECODE_FLAG_LABEL}: {reasons[0] if reasons else 'suspicious decoded payload'} "
             f"(+{DECODE_FLAGGED_POINTS})"
         )
+
+    if fuzzy_analysis and fuzzy_analysis.get("match_count"):
+        nearest = fuzzy_analysis.get("nearest_distance")
+        if nearest is not None:
+            if nearest <= FUZZY_EXACT_DISTANCE:
+                fuzzy_points = FUZZY_EXACT_POINTS
+            elif nearest <= FUZZY_CLOSE_DISTANCE:
+                fuzzy_points = FUZZY_CLOSE_POINTS
+            else:
+                fuzzy_points = FUZZY_LOOSE_POINTS
+            score += fuzzy_points
+            label = fuzzy_analysis["matches"][0]["label"]
+            factors.append(
+                f"{FUZZY_LABEL}: close match to '{label}' (TLSH distance {nearest}, +{fuzzy_points})"
+            )
 
     if yara_matches:
         from modules.yara_engine import MAX_YARA_RISK_POINTS, severity_points

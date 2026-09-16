@@ -57,7 +57,7 @@ CERBERUS implements interactive and automated scan profiles:
 
 | Profile | Enabled Engines | Report Output |
 |---|---|---|
-| Full Scan | Local blacklist, VirusTotal lookup, string IOC scan, Shannon entropy, magic number header check, PE analysis, structured IOC extraction, Base64/XOR deobfuscation, YARA rules | JSON, CSV, and HTML reports |
+| Full Scan | Local blacklist, VirusTotal lookup, string IOC scan, Shannon entropy, magic number header check, PE analysis, structured IOC extraction, Base64/XOR deobfuscation, TLSH fuzzy similarity, YARA rules | JSON, CSV, and HTML reports |
 | Quick Scan | Local blacklist, magic number header check | JSON, CSV, and HTML reports |
 | Custom Scan | User-selected combination of all available engines (engine toggles in the GUI) | Optional JSON, CSV, and HTML reports |
 | Analysis History | Lists previous JSON reports with optional name, hash, or risk-level filtering | Terminal listing |

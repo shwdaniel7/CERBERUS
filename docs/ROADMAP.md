@@ -81,7 +81,16 @@ the user on 2026-09-13:
    capped risk factor. stdlib only (the sixth engine to need no new
    dependency). Decoding is bounded per S7: a 2 MB raw prefix per blob, capped
    blob count/size and feed, fixed 512 KB XOR window.
-3. **Fuzzy hashing** — TLSH (wheel; ssdeep as alternative) similarity.
+3. ✅ **Fuzzy hashing** — `modules/fuzzy_engine.py` computes a TLSH digest of
+   the analyzed file (streamed on the shared buffer) and diffs it against every
+   entry in `iocs/tlsh_corpus.txt` (one `<tlsh-hex> <label>` per line, `#`
+   comments allowed). Matches within a distance threshold surface with their
+   label/similarity; the nearest match adds a capped risk factor (exact
+   +20 / close +10 / loose +5). The engine is optional exactly like YARA:
+   `py-tlsh` is installed best-effort on CI (`requirements-fuzzy.txt`),
+   exercises the real hash path when available and degrades to `available:
+   False` otherwise. Matching is purely indicative — similarity is a lead to
+   investigate, not a verdict.
 4. **Archive recursion** — zip via `zipfile` with S4 safeguards.
 5. **Authenticode on PE** — signature presence/subject/issuer; revocation off
    by default.
