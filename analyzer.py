@@ -228,6 +228,7 @@ def analyze_file(selected_file, config, show_details=True):
     yara_analysis = None
     deobf_analysis = None
     fuzzy_analysis = None
+    zip_analysis = None
     shared_metrics = None
     shared_content = None
 
@@ -242,6 +243,7 @@ def analyze_file(selected_file, config, show_details=True):
         bool(config.get("ioc_extract")),
         bool(config.get("deobfuscation")),
         bool(config.get("fuzzy")),
+        bool(config.get("zip")),
         bool(config.get("yara")),
         bool(config["virustotal"]),
     ))
@@ -313,6 +315,30 @@ def analyze_file(selected_file, config, show_details=True):
                 print(paint_red(magic_alert))
             print()
         engine_done("File type and magic numbers", engine_started)
+
+    if config.get("zip"):
+        engine_started = engine_start("Archive recursion (ZIP)")
+        if show_details:
+            print_section("Archive (ZIP)")
+        if shared_content is None and shared_metrics is None:
+            shared_content, shared_metrics = read_analysis_buffer(
+                selected_file, compute_histogram=config["entropy"]
+            )
+        from modules.zip_engine import scan_zip
+        zip_analysis = scan_zip(selected_file, config, content=shared_content)
+        if show_details:
+            if zip_analysis.get("status") == "no_data":
+                print(paint_dim("    Not a ZIP archive; nothing to inspect."))
+            elif zip_analysis.get("status") == "error":
+                print(paint_yellow(f"[-] Archive inspection failed: {zip_analysis.get('error')}"))
+            else:
+                print(f"  Members: {paint_yellow(zip_analysis['entry_count'])} | "
+                      f"Nested archives: {paint_yellow(zip_analysis['nested_archives'])}")
+                for entry in zip_analysis["entries"]:
+                    mark = paint_yellow("!") if entry["flags"] else " "
+                    print(f"  {mark} {paint_dim(entry['name'])} ({entry['detected_type']})")
+            print()
+        engine_done("Archive recursion (ZIP)", engine_started)
 
     if config["entropy"]:
         engine_started = engine_start("Entropy and packers")
@@ -464,6 +490,7 @@ def analyze_file(selected_file, config, show_details=True):
         or bool(deobf_stripped and deobf_stripped.get("flagged"))
         or bool(yara_analysis and yara_analysis.get("match_count"))
         or bool(fuzzy_analysis and fuzzy_analysis.get("match_count"))
+        or bool(zip_analysis and zip_analysis.get("findings") and any(zip_analysis["findings"].values()))
         or any(extracted_iocs.get(category) for category in ("suspicious_paths", "powershell_commands", "cmd_commands"))
     )
     should_query_virustotal = config["virustotal"] and virustotal_available() and (
@@ -495,6 +522,7 @@ def analyze_file(selected_file, config, show_details=True):
         extracted_iocs, yara_matches=(yara_analysis or {}).get("matches") or None,
         deobfuscation_analysis=deobf_stripped,
         fuzzy_analysis=fuzzy_analysis,
+        zip_analysis=zip_analysis,
     )
     analysis_duration = round(time.perf_counter() - analysis_start, 3)
     progress.finish()
@@ -508,6 +536,7 @@ def analyze_file(selected_file, config, show_details=True):
             magic_alert, risk, analysis_duration, extracted_iocs, packer_analysis,
             pe_analysis, file_type_analysis, yara_analysis=yara_analysis,
             deobfuscation_analysis=deobf_stripped, fuzzy_analysis=fuzzy_analysis,
+            zip_analysis=zip_analysis,
             engine_times=engine_times
         )
     result = {
@@ -535,6 +564,7 @@ def analyze_file(selected_file, config, show_details=True):
             "yara": yara_analysis,
             "deobfuscation": deobf_stripped,
             "fuzzy": fuzzy_analysis,
+            "zip": zip_analysis,
             "virustotal": result_vt,
             "blacklist_match": bool(in_blacklist),
             "magic_alert": magic_alert,
@@ -627,6 +657,7 @@ def cli_config(args):
         "pe_analysis": not quick and bool(settings.get("pe_analysis", True)),
         "deobfuscation": not quick and bool(settings.get("deobfuscation", True)),
         "fuzzy": not quick and bool(settings.get("fuzzy", True)),
+        "zip": not quick and bool(settings.get("zip", True)),
         "yara": not quick and bool(settings.get("yara", True)),
         "skip_reparse_points": bool(settings.get("skip_reparse_points", True)),
         "gerar_report": True,

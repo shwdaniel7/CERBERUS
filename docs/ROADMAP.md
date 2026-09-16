@@ -91,7 +91,14 @@ the user on 2026-09-13:
    exercises the real hash path when available and degrades to `available:
    False` otherwise. Matching is purely indicative — similarity is a lead to
    investigate, not a verdict.
-4. **Archive recursion** — zip via `zipfile` with S4 safeguards.
+4. ✅ **Archive recursion** — `modules/zip_engine.py` inspects ZIP members
+   from `zipfile` (stdlib only, never extracts to disk). S4 safeguards are
+   enforced by design: member-count / per-entry-uncompressed / total-uncompressed
+   caps, a compression-ratio heuristic for zip-bomb shapes, rejection of
+   absolute, drive- and `..`-traversal member names (flagged without opening),
+   and bounded in-memory recursion into nested archives (max depth 3). Findings
+   cascade up (traversal/bomb/embedded executable/script) and drive a capped
+   risk factor; non-ZIP input degrades to `no_data` without errors.
 5. **Authenticode on PE** — signature presence/subject/issuer; revocation off
    by default.
 6. **Office macros + PDF JS** — `oletools` / `pypdf` (larger scope).

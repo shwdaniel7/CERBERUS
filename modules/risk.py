@@ -18,8 +18,14 @@ FUZZY_CLOSE_POINTS = 10
 FUZZY_LOOSE_POINTS = 5
 FUZZY_LABEL = "Fuzzy similarity"
 
+ZIP_TRAVERSAL_POINTS = 15
+ZIP_BOMB_POINTS = 15
+ZIP_EXECUTABLE_POINTS = 10
+ZIP_SCRIPT_POINTS = 5
+ZIP_LABEL = "Archive (ZIP)"
 
-def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, iocs=None, yara_matches=None, deobfuscation_analysis=None, fuzzy_analysis=None):
+
+def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, iocs=None, yara_matches=None, deobfuscation_analysis=None, fuzzy_analysis=None, zip_analysis=None):
     score = 0
     factors = []
 
@@ -103,6 +109,21 @@ def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert,
             factors.append(
                 f"{FUZZY_LABEL}: close match to '{label}' (TLSH distance {nearest}, +{fuzzy_points})"
             )
+
+    if zip_analysis:
+        zip_findings = zip_analysis.get("findings") or {}
+        if zip_findings.get("traversal_attempt"):
+            score += ZIP_TRAVERSAL_POINTS
+            factors.append(f"{ZIP_LABEL}: traversal / absolute-path member (+{ZIP_TRAVERSAL_POINTS})")
+        if zip_findings.get("high_compression_ratio"):
+            score += ZIP_BOMB_POINTS
+            factors.append(f"{ZIP_LABEL}: high compression ratio (zip-bomb shape, +{ZIP_BOMB_POINTS})")
+        if zip_findings.get("embedded_executable"):
+            score += ZIP_EXECUTABLE_POINTS
+            factors.append(f"{ZIP_LABEL}: executable member inside archive (+{ZIP_EXECUTABLE_POINTS})")
+        if zip_findings.get("suspicious_script"):
+            score += ZIP_SCRIPT_POINTS
+            factors.append(f"{ZIP_LABEL}: script member inside archive (+{ZIP_SCRIPT_POINTS})")
 
     if yara_matches:
         from modules.yara_engine import MAX_YARA_RISK_POINTS, severity_points

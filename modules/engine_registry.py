@@ -84,6 +84,12 @@ _ENGINES = [
         description="Compare the file's TLSH fuzzy hash against iocs/tlsh_corpus.txt (requires py-tlsh).",
     ),
     Engine(
+        "zip",
+        "Archive recursion (ZIP)",
+        "zip",
+        description="Inspect ZIP members with S4 safeguards (caps, compression ratio, traversal, nested depth).",
+    ),
+    Engine(
         "yara",
         "YARA rules",
         "yara",
