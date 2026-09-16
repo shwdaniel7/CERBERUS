@@ -23,6 +23,7 @@ DEFAULT_SETTINGS = {
     "deobfuscation": True,
     "fuzzy": True,
     "zip": True,
+    "authenticode": True,
     "yara": True,
     "skip_reparse_points": True,
     "max_file_size": 200 * 1024 * 1024,

@@ -584,6 +584,7 @@ class CerberusApp(tk.Tk):
             "deobfuscation": bool(self.settings.get("deobfuscation", True)),
             "fuzzy": bool(self.settings.get("fuzzy", True)),
             "zip": bool(self.settings.get("zip", True)),
+            "authenticode": bool(self.settings.get("authenticode", True)),
             "yara": bool(self.settings.get("yara", True)),
             "gerar_report": True,
             "report_format": "json",
@@ -808,6 +809,7 @@ class CerberusApp(tk.Tk):
                 "deobfuscation": False,
                 "fuzzy": False,
                 "zip": False,
+                "authenticode": False,
                 "yara": False,
             }
         else:
@@ -849,6 +851,7 @@ class CerberusApp(tk.Tk):
             "deobfuscation": self.engine_vars["deobfuscation"].get(),
             "fuzzy": self.engine_vars["fuzzy"].get(),
             "zip": self.engine_vars["zip"].get(),
+            "authenticode": self.engine_vars["authenticode"].get(),
             "yara": self.engine_vars["yara"].get(),
             "gerar_report": True,
             "report_format": self.settings.get("report_format", "all"),
@@ -893,6 +896,8 @@ class CerberusApp(tk.Tk):
             names.append("TLSH fuzzy similarity")
         if config["zip"]:
             names.append("Archive recursion (ZIP)")
+        if config["authenticode"]:
+            names.append("Authenticode (PE signatures)")
         if config["yara"]:
             names.append("YARA rules")
         if config["virustotal"]:

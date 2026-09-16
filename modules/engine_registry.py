@@ -90,6 +90,12 @@ _ENGINES = [
         description="Inspect ZIP members with S4 safeguards (caps, compression ratio, traversal, nested depth).",
     ),
     Engine(
+        "authenticode",
+        "Authenticode (PE signatures)",
+        "authenticode",
+        description="PE signature presence, issuer and subject from the Security directory (stdlib; revocation off).",
+    ),
+    Engine(
         "yara",
         "YARA rules",
         "yara",

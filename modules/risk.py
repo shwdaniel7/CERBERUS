@@ -24,8 +24,11 @@ ZIP_EXECUTABLE_POINTS = 10
 ZIP_SCRIPT_POINTS = 5
 ZIP_LABEL = "Archive (ZIP)"
 
+AUTHENTICODE_MALFORMED_POINTS = 5
+AUTHENTICODE_LABEL = "Authenticode"
 
-def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, iocs=None, yara_matches=None, deobfuscation_analysis=None, fuzzy_analysis=None, zip_analysis=None):
+
+def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert, iocs=None, yara_matches=None, deobfuscation_analysis=None, fuzzy_analysis=None, zip_analysis=None, authenticode_analysis=None):
     score = 0
     factors = []
 
@@ -124,6 +127,11 @@ def calculate_risk(in_blacklist, result_vt, entropy_status, alerts, magic_alert,
         if zip_findings.get("suspicious_script"):
             score += ZIP_SCRIPT_POINTS
             factors.append(f"{ZIP_LABEL}: script member inside archive (+{ZIP_SCRIPT_POINTS})")
+
+    if authenticode_analysis and authenticode_analysis.get("notes"):
+        note = authenticode_analysis["notes"][0]
+        score += AUTHENTICODE_MALFORMED_POINTS
+        factors.append(f"{AUTHENTICODE_LABEL}: {note} (+{AUTHENTICODE_MALFORMED_POINTS})")
 
     if yara_matches:
         from modules.yara_engine import MAX_YARA_RISK_POINTS, severity_points

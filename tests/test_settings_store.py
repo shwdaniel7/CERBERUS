@@ -21,7 +21,7 @@ def test_missing_file_returns_defaults(store):
     assert settings["report_format"] == "all"
     assert settings["output_dir"] == "reports"
     assert settings["skip_reparse_points"] is True
-    for name in ("blacklist", "virustotal", "strings", "ioc_extract", "entropy", "magic_numbers", "pe_analysis", "deobfuscation", "fuzzy", "zip", "yara"):
+    for name in ("blacklist", "virustotal", "strings", "ioc_extract", "entropy", "magic_numbers", "pe_analysis", "deobfuscation", "fuzzy", "zip", "authenticode", "yara"):
         assert settings[name] is True
 
 
@@ -60,7 +60,7 @@ def test_unknown_keys_are_dropped_on_save(store):
     assert "api_key" not in saved
     assert json.loads(store.read_text(encoding="utf-8")) == {  # no unknown key leaks to disk
         "blacklist": True, "virustotal": False, "strings": True, "ioc_extract": True,
-        "entropy": True, "magic_numbers": True, "pe_analysis": True, "deobfuscation": True, "fuzzy": True, "zip": True, "yara": True,
+        "entropy": True, "magic_numbers": True, "pe_analysis": True, "deobfuscation": True, "fuzzy": True, "zip": True, "authenticode": True, "yara": True,
         "skip_reparse_points": True, "max_file_size": 200 * 1024 * 1024,
         "workers": 4, "cache_enabled": True, "output_dir": "reports",
         "report_format": "all",

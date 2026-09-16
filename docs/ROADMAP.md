@@ -99,8 +99,14 @@ the user on 2026-09-13:
    and bounded in-memory recursion into nested archives (max depth 3). Findings
    cascade up (traversal/bomb/embedded executable/script) and drive a capped
    risk factor; non-ZIP input degrades to `no_data` without errors.
-5. **Authenticode on PE** — signature presence/subject/issuer; revocation off
-   by default.
+5. ✅ **Authenticode on PE** — `modules/pe_authenticode.py` locates the PE
+   security directory (`WIN_CERTIFICATE` table) on PE32/PE32+ and reports
+   signature presence plus the PKCS#7 subject/issuer. The DER walk is a
+   self-contained, bounds-checked stdlib reader with a
+   `MAX_DER_TRAVERSAL` (256 KB) cap — no external dependency, no API calls, and
+   revocation is off by default. Malformed signature blocks (bad length,
+   revision/type, truncated table) surface as `notes` and add a capped +5 risk
+   factor; non-PE files degrade to `no_data` without errors.
 6. **Office macros + PDF JS** — `oletools` / `pypdf` (larger scope).
 7. **RAR** — optional (`rarfile` + `unrar`), Windows-coupled.
 
