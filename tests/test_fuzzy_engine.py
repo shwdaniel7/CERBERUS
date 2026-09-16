@@ -252,8 +252,10 @@ def test_real_lib_same_file_roundtrip(tmp_path):
     assert first["file_hash"]
     assert real_tlsh.diff(first["file_hash"], first["file_hash"]) == 0
     unrelated = tmp_path / "other.bin"
-    unrelated.write_bytes(b"A" * 2000)
+    unrelated.write_bytes(bytes(range(256)) * 8)  # varied bytes → produces a hash
     other = scan_similarity(str(unrelated))
+    assert other["available"] is True
+    assert other["file_hash"]
     assert real_tlsh.diff(first["file_hash"], other["file_hash"]) > 0
 
 def test_calculate_risk_fuzzy_exact(monkeypatch):
@@ -317,10 +319,11 @@ def test_pipeline_fuzzy_match(monkeypatch, tmp_path):
     assert any("Fuzzy similarity:" in f for f in result["risk"]["factors"])
 
 
-def test_pipeline_fuzzy_unavailable(tmp_path):
-    """Without the real TLSH lib the engine degrades and the pipeline still completes."""
+def test_pipeline_fuzzy_unavailable(tmp_path, monkeypatch):
+    """Without the TLSH lib the engine degrades and the pipeline still completes."""
     from analyzer import analyze_file
 
+    monkeypatch.setattr(fuzzy_engine, "tlsh", None)  # force degrade regardless of env
     sample = tmp_path / "plain.txt"
     sample.write_bytes(b"hello world")
     result = analyze_file(str(sample), _fuzzy_pipeline_config(tmp_path), show_details=False)
