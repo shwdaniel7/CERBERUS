@@ -1,8 +1,8 @@
-# CERBERUS YARA rules — beginner guide
+# CERBERUS YARA rules: beginner guide
 
 CERBERUS ships with a small catalog of original, conservative YARA rules plus
 templates you can copy to write your own. This page explains how rules work,
-what the catalog covers, and how matches become risk — no security background
+what the catalog covers, and how matches become risk. No security background
 required.
 
 ## What a YARA rule is
@@ -31,14 +31,14 @@ rule example_rule {          // rule name: what the report will call it
 - **Where rules live:** `yara_rules/`. Every `.yar`/`.yara` file in that
   folder *and its subfolders* (for example `yara_rules/core/`) is compiled and
   applied to every scanned candidate. `yara_rules/templates/` only holds
-  commented skeletons — they are not active rules.
+  commented skeletons (they are not active rules).
 - **Bad rules don't break the scan:** each rule file is compiled separately.
   A syntax error in one file is recorded under `compile_errors` in the JSON
   report and the other rules keep working.
 - **Timeout:** every rule runs with a 10-second timeout, so a pathological
   rule can never hang your scan.
 - **Turning a rule off:** delete the file (or move it out of `yara_rules/`).
-  There is no per-rule checkbox — file presence is the switch.
+  There is no per-rule checkbox. File presence is the switch.
 - **The YARA engine itself is optional:** it activates when
   `python -m pip install -r requirements-yara.txt` has been run. Without it,
   the engine reports `available: false` and the scan still completes.
@@ -48,7 +48,7 @@ rule example_rule {          // rule name: what the report will call it
 All rules are original and written to be *conservative*: each one needs
 several signs together, so normal files keep a low score. Every rule has a
 positive and a negative test in `tests/test_yara_rule_catalog.py` that runs on
-CI — the built-in false-positive guard.
+CI as the built-in false-positive guard.
 
 | Rule | Detects | Severity | Points |
 |---|---|---|---|
@@ -75,8 +75,8 @@ Each matching rule contributes points according to its `meta.severity`:
 
 The YARA contribution is **capped at 40 points** total. If a rule has no
 `severity` meta it counts as `medium` (10). The report's `factors` list
-explains which rules fired and why — for example
-`YARA: PHP one-line web shell (high, +15)`.
+explains which rules fired and why (for example
+`YARA: PHP one-line web shell (high, +15)`).
 
 > A match is evidence, not proof: treat YARA matches as a reason to look
 > closer, not as a verdict by itself.
@@ -85,13 +85,13 @@ explains which rules fired and why — for example
 
 1. Copy one of the skeletons in `yara_rules/templates/` into
    `yara_rules/` (name it `something.yar`).
-   - `string_rule.yar.template` — detect literal strings (with `nocase`,
+   - `string_rule.yar.template`: detect literal strings (with `nocase`,
      `any of them`, etc.)
-   - `pe_rule.yar.template` — use numeric helpers (`uint16(0) == 0x5A4D`,
+   - `pe_rule.yar.template`: use numeric helpers (`uint16(0) == 0x5A4D`,
      `filesize`, offsets)
-   - `regex_rule.yar.template` — match a RE2-style pattern
+   - `regex_rule.yar.template`: match a RE2-style pattern
 2. Fill in the `meta` block (`severity`, `description`, `reference`).
-3. Save and re-run a **Full Scan** — a new rule file is picked up the next
+3. Save and re-run a **Full Scan**. A new rule file is picked up the next
    time a process scans (the compiled cache is invalidated when files change).
 
 Inline reference: <https://yara.readthedocs.io/>

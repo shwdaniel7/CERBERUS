@@ -1,4 +1,4 @@
-# CERBERUS — Roadmap
+# CERBERUS: Roadmap
 
 Execution plan. Phases are ordered by cost × value; decisions were made with
 the user on 2026-09-13:
@@ -10,7 +10,7 @@ the user on 2026-09-13:
 - **Testing**: a pytest suite + GitHub Actions CI lands **before** new engines.
 - **Language**: English is the standard UI/report language.
 
-## Phase 0 — UX polish + security hardening (in progress)
+## Phase 0: UX polish + security hardening (in progress)
 
 **Functional UX**
 - Custom Scan is real: engine checkboxes in the GUI build the scan config;
@@ -23,22 +23,22 @@ the user on 2026-09-13:
 - Paste a full path (Ctrl+V in the field) instead of only the file picker.
 
 **Security (see `docs/security/SECURITY_AUDIT.md`)**
-- S1 fixed — CSV formula injection (`_sanitize_csv_value` in `modules/reports.py`).
-- S2 fixed — default `max_file_size` 200 MB enforced in CLI/GUI/batch; fail-fast
+- S1 fixed: CSV formula injection (`_sanitize_csv_value` in `modules/reports.py`).
+- S2 fixed: default `max_file_size` 200 MB enforced in CLI/GUI/batch; fail-fast
   before any engine read.
-- S3 fixed — `settings_store` fail-safe, typed, secret-free.
-- S5 tracked (junction walks) — Phase 1.
+- S3 fixed: `settings_store` fail-safe, typed, secret-free.
+- S5 tracked (junction walks): Phase 1.
 
 **Docs**: `docs/security/SECURITY_AUDIT.md`, `SECURITY.md`, this file.
 
-## Phase 1 — Foundation (complete)
+## Phase 1: Foundation (complete)
 
 - **Tests**: `requirements-dev.txt` (pytest + pytest-cov), `pytest.ini`,
   `conftest.py`, and a `tests/` suite covering the analyzer pipeline, risk
   scoring, engines, reports, cache, batch runner, settings store, and the
   engine registry. Security regressions are first-class tests: CSV injection,
   oversized files, corrupt/hostile settings, symlink/reparse pruning.
-- **CI**: `.github/workflows/ci.yml` — pytest on Python 3.12/3.13 on
+- **CI**: `.github/workflows/ci.yml` runs pytest on Python 3.12/3.13 on
   Ubuntu + Windows with coverage gates. The legacy
   `validate_all.py` / `test_cache_hit.py` suites are git-ignored and no longer
   part of CI (their scenarios moved into the pytest suite).
@@ -49,9 +49,9 @@ the user on 2026-09-13:
   during batch walks. `docs/security/SECURITY_AUDIT.md` updated to
   **Fixed/Addressed**.
 
-## Phase 2 — Detection engines (each with tests + report schema entry)
+## Phase 2: Detection engines (each with tests + report schema entry)
 
-1. ✅ **YARA + custom rules** — `modules/yara_engine.py` scans the rules in
+1. **YARA + custom rules**: `modules/yara_engine.py` scans the rules in
    `yara_rules/` using the optional `yara-python` package
    (`requirements-yara.txt`; no cp314 wheel yet, so the engine degrades to an
    `available: False` result instead of crashing, mirroring `pe_analysis`).
@@ -63,7 +63,7 @@ the user on 2026-09-13:
    on 3.12/3.13 and exercise the exception paths locally with a fake `yara`
    API. Open follow-up: rule-count/size limits for full S6 compliance.
 
-1b. ✅ **Bundled rule catalog + templates for non-expert users** — a
+1b. **Bundled rule catalog + templates for non-expert users**: a
    conservative, original catalog in `yara_rules/core/` (10 rules: PS cradles,
    LOLBin staging, embedded-PE, persistence, VBA macros, web shells, RAT
    markers), each with a positive/negative test pair as the FP guard. Rule
@@ -72,7 +72,7 @@ the user on 2026-09-13:
    `description`/`reference` in the report. `yara_rules/templates/` ships
    commented skeletons (string/PE/regex) and `docs/YARA_RULES.md` is the
    beginner guide.
-2. ✅ **Deobfuscation** — `modules/deobfuscation.py` detects long Base64
+2. **Deobfuscation**: `modules/deobfuscation.py` detects long Base64
    blobs (decode plus printable-text / embedded-header heuristic) and
    single-byte XOR content (brute force over a bounded window ranking keys by
    printable ratio and space count). The decoded view feeds back into **YARA**
@@ -81,7 +81,7 @@ the user on 2026-09-13:
    capped risk factor. stdlib only (the sixth engine to need no new
    dependency). Decoding is bounded per S7: a 2 MB raw prefix per blob, capped
    blob count/size and feed, fixed 512 KB XOR window.
-3. ✅ **Fuzzy hashing** — `modules/fuzzy_engine.py` computes a TLSH digest of
+3. **Fuzzy hashing**: `modules/fuzzy_engine.py` computes a TLSH digest of
    the analyzed file (streamed on the shared buffer) and diffs it against every
    entry in `iocs/tlsh_corpus.txt` (one `<tlsh-hex> <label>` per line, `#`
    comments allowed). Matches within a distance threshold surface with their
@@ -89,9 +89,9 @@ the user on 2026-09-13:
    +20 / close +10 / loose +5). The engine is optional exactly like YARA:
    `py-tlsh` is installed best-effort on CI (`requirements-fuzzy.txt`),
    exercises the real hash path when available and degrades to `available:
-   False` otherwise. Matching is purely indicative — similarity is a lead to
+   False` otherwise. Matching is purely indicative. Similarity is a lead to
    investigate, not a verdict.
-4. ✅ **Archive recursion** — `modules/zip_engine.py` inspects ZIP members
+4. **Archive recursion**: `modules/zip_engine.py` inspects ZIP members
    from `zipfile` (stdlib only, never extracts to disk). S4 safeguards are
    enforced by design: member-count / per-entry-uncompressed / total-uncompressed
    caps, a compression-ratio heuristic for zip-bomb shapes, rejection of
@@ -99,30 +99,30 @@ the user on 2026-09-13:
    and bounded in-memory recursion into nested archives (max depth 3). Findings
    cascade up (traversal/bomb/embedded executable/script) and drive a capped
    risk factor; non-ZIP input degrades to `no_data` without errors.
-5. ✅ **Authenticode on PE** — `modules/pe_authenticode.py` locates the PE
+5. **Authenticode on PE**: `modules/pe_authenticode.py` locates the PE
    security directory (`WIN_CERTIFICATE` table) on PE32/PE32+ and reports
    signature presence plus the PKCS#7 subject/issuer. The DER walk is a
    self-contained, bounds-checked stdlib reader with a
-   `MAX_DER_TRAVERSAL` (256 KB) cap — no external dependency, no API calls, and
+   `MAX_DER_TRAVERSAL` (256 KB) cap. No external dependency, no API calls, and
    revocation is off by default. Malformed signature blocks (bad length,
    revision/type, truncated table) surface as `notes` and add a capped +5 risk
    factor; non-PE files degrade to `no_data` without errors.
-6. **Office macros + PDF JS** — `oletools` / `pypdf` (larger scope).
-7. **RAR** — optional (`rarfile` + `unrar`), Windows-coupled.
+6. **Office macros + PDF JS**: `oletools` / `pypdf` (larger scope).
+7. **RAR**: optional (`rarfile` + `unrar`), Windows-coupled.
 
-## Phase 3 — Correlation
+## Phase 3: Correlation
 
 - MITRE ATT&CK mapping (static constraint table, e.g. `VirtualAlloc`+entropy →
   T1055).
 - Report diff between two JSON analyses.
 - Statistics dashboard aggregating history/batch summaries.
 
-## Phase 4 — Threat intel feeds
+## Phase 4: Threat intel feeds
 
 - Reputation service with pluggable providers (AlienVault OTX, MISP,
   AbuseIPDB); per-feed keys in `.env`; TLS + timeouts enforced.
 
-## Phase 5 — Deferred (post-portfolio)
+## Phase 5: Deferred (post-portfolio)
 
 - FastAPI service + modern frontend, then multi-user, roles, and audit trail,
   then SOAR plugin API. PDF export and PT/EN report localization are extras of

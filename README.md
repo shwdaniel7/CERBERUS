@@ -31,7 +31,7 @@
 
 ---
 
-## ⚠ Warning
+## Warning
 
 CERBERUS is an educational static analysis toolkit. It inspects file metadata, file headers, embedded strings, entropy values, and hash reputation without executing the target binary.
 
@@ -41,7 +41,7 @@ CERBERUS is an educational static analysis toolkit. It inspects file metadata, f
 
 ---
 
-## 📖 About
+## About
 
 CERBERUS is a Python-based static malware analysis toolkit designed to inspect suspicious files before execution. It runs file classification checks, signature reputation lookups, string extraction, entropy assessment, and file-type validation using local data and VirusTotal.
 
@@ -51,7 +51,7 @@ These modules are composed into a command-driven analyzer in `analyzer.py`. With
 
 ---
 
-## ✨ Capabilities
+## Capabilities
 
 CERBERUS implements interactive and automated scan profiles:
 
@@ -61,7 +61,7 @@ CERBERUS implements interactive and automated scan profiles:
 | Quick Scan | Local blacklist, magic number header check | JSON, CSV, and HTML reports |
 | Custom Scan | User-selected combination of all available engines (engine toggles in the GUI) | Optional JSON, CSV, and HTML reports |
 | Analysis History | Lists previous JSON reports with optional name, hash, or risk-level filtering | Terminal listing |
-| Batch Scan | Full Scan applied to every file in a selected folder with **parallel worker processes**, cache reuse, and an optimized SQLite WAL cache | Risk-filtered JSON reports plus batch summary |
+| Batch Scan | Full Scan applied to every file in a selected folder with parallel worker processes, cache reuse, and an optimized SQLite WAL cache | Risk-filtered JSON reports plus batch summary |
 | IOC Lists Integrity | Validates local hashes and suspicious terms, reporting valid and malformed entries | Terminal listing |
 | **Clear History/Reports** | Delete all reports (JSON, CSV, HTML) and optionally the analysis cache | Terminal confirmation + GUI buttons |
 
@@ -90,13 +90,13 @@ The toolkit can:
 - select a folder and analyze relevant files recursively, generating individual reports only when the risk is High or Critical
 - skip common static assets and generated dependency folders during batch analysis
 - validate and reload IOC lists without changing the source code
-- **clear all analysis history and reports via CLI (`--clear-history`) or GUI buttons (History/Reports views)**
-- **clear the persistent analysis cache via CLI (`--clear-history --include-cache`) or checkpoint it automatically when a batch finishes**
+- clear all analysis history and reports via CLI (`--clear-history`) or GUI buttons (History/Reports views)
+- clear the persistent analysis cache via CLI (`--clear-history --include-cache`) or checkpoint it automatically when a batch finishes
 - use the first dashboard interface to select files, run scans, monitor engines, and inspect results
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 CERBERUS/
@@ -182,7 +182,7 @@ Modular separation keeps reputation checks, static analysis, and reporting isola
 
 ---
 
-## 🔄 Analysis Workflow
+## Analysis Workflow
 
 ```text
 [Start] python analyzer.py
@@ -220,7 +220,7 @@ Running `python analyzer.py <file-or-folder> --full` bypasses the dashboard and 
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ```bash
 git clone https://github.com/shwdaniel7/CERBERUS.git
@@ -232,7 +232,7 @@ pip install -r requirements.txt
 
 ---
 
-## 🔑 Configuration
+## Configuration
 
 CERBERUS loads the VirusTotal API key from `.env` using `python-dotenv`.
 
@@ -246,7 +246,7 @@ If `.env` is missing or `VT_API_KEY` is not set, VirusTotal lookups will fail gr
 
 ---
 
-## 💻 Usage
+## Usage
 
 Run the toolkit from the repository root:
 
@@ -303,7 +303,7 @@ Interactive output includes a red CERBERUS identity banner, `[>]` engine-start s
 
 Batch analysis uses configurable workers and a persistent cache keyed by file metadata, enabled engines, and analyzer version. The dashboard batch uses a bounded pool of up to four worker processes, avoids CSV/HTML generation for every low-risk file, and writes individual JSON reports only at the configured risk threshold. Repeated scans can reuse previous results when the file and configuration are unchanged. When SHA-256 and entropy are both enabled, their reusable byte metrics are collected in one streaming pass.
 
-**Performance improvements**: Large batch scans run in **separate worker processes** through a `ProcessPoolExecutor`, so CPU-heavy engines no longer contend on the Python GIL and the GUI stays responsive regardless of the number of files or workers. The analysis cache uses **SQLite WAL mode** with connections confined to each worker for concurrent access without locking contention. Cache connections are closed (WAL checkpoint) after batch completion.
+Performance improvements: Large batch scans run in separate worker processes through a `ProcessPoolExecutor`, so CPU-heavy engines no longer contend on the Python GIL and the GUI stays responsive regardless of the number of files or workers. The analysis cache uses SQLite WAL mode with connections confined to each worker for concurrent access without locking contention. Cache connections are closed (WAL checkpoint) after batch completion.
 
 The analysis core emits structured `AnalysisEvent` values for file and engine lifecycle changes. Future interfaces can subscribe to these events without parsing terminal output.
 
@@ -333,7 +333,7 @@ The dashboard includes lightweight interaction polish without turning the forens
 
 On file selection the Identity panel is populated immediately with the name, extension, size, header-detected type, and compatibility, while the SHA-256 is computed in the background. The window enforces a `980x650` minimum and the path and hash text reflows when resized, so the layout never clips at small sizes.
 
-The dashboard opens with a file picker. After selecting a target file, choose **Full Scan**, **Quick Scan**, or **Custom Scan** as the profile — `Custom Scan` enables only the engines you toggle, and `Quick`/`Full` preset them. The analysis runs in a background thread while each enabled engine reports its status, and the result fills the `IDENTITY`, `EVIDENCE`, and `VERDICT` panels.
+The dashboard opens with a file picker. After selecting a target file, choose **Full Scan**, **Quick Scan**, or **Custom Scan** as the profile (`Custom Scan` enables only the engines you toggle, and `Quick`/`Full` preset them). The analysis runs in a background thread while each enabled engine reports its status, and the result fills the `IDENTITY`, `EVIDENCE`, and `VERDICT` panels.
 
 The **History** view lists previous JSON reports stored in `reports/` with the analysis date, file name, risk, and score. Select a row to **View JSON** (indented pop-up), **Open Report** (opens the matching artifact with the system application), or **Open Folder**; a **Clear History** button deletes all JSON report files (with confirmation).
 
@@ -341,7 +341,7 @@ The **Batch Scan** flow chooses a folder. CERBERUS recursively analyzes relevant
 
 **Large folder handling**: Batch scans dispatch files across worker processes and emit progress per file, so the UI remains interactive even with thousands of files.
 
-The **Reports** navigation tab lists all generated artifacts (JSON, CSV, HTML) with file kind and size — select a row or double-click to open the artifact. A **Clear Reports** button removes all report files including batch summaries (with confirmation).
+The **Reports** navigation tab lists all generated artifacts (JSON, CSV, HTML) with file kind and size. Select a row or double-click to open the artifact. A **Clear Reports** button removes all report files including batch summaries (with confirmation).
 
 The **IOC Lists** flow validates the IOC files. `iocs/blacklist.txt` accepts one SHA-256 hash per line, with optional `#` comments. `iocs/suspect_strings.txt` accepts one suspicious term per line. Invalid hashes, empty terms, and malformed entries are ignored during analysis and reported by this flow. Both files are reloaded from disk for every analysis, so updating them does not require a code change or restart.
 
@@ -400,11 +400,11 @@ Add `--quiet` to collapse this into a single line: `sample.exe: Low (20/100) - 0
 
 ---
 
-## 🧪 Testing
+## Testing
 
 The repo ships with a pytest suite (`tests/`) covering the analyzer pipeline,
 risk scoring, engines, reports, cache, batch runner, settings store, and the
-engine registry — including security-regression tests for CSV injection,
+engine registry, including security-regression tests for CSV injection,
 oversized files, and corrupt settings. GitHub Actions CI (`.github/workflows/ci.yml`)
 runs the suite plus the legacy validation scripts on Python 3.12 and 3.13 for
 Ubuntu and Windows.
@@ -418,7 +418,7 @@ python validate_all.py                                            # legacy end-t
 
 ---
 
-## 🧩 Analysis Engines
+## Analysis Engines
 
 ### `modules/colors.py`
 
@@ -516,7 +516,7 @@ VirusTotal requests use a 15-second timeout and are skipped when `VT_API_KEY` is
 
 ---
 
-## 🔬 Technical Concepts
+## Technical Concepts
 
 ### SHA-256
 
@@ -552,7 +552,7 @@ pip install pefile
 
 ---
 
-## 📄 Example Report
+## Example Report
 
 ```json
 {
@@ -644,7 +644,7 @@ Engines disabled by the chosen profile appear as `"Not executed"` in their secti
 
 ---
 
-## 📚 Technologies
+## Technologies
 
 - Python
 - Tkinter
@@ -656,7 +656,7 @@ Engines disabled by the chosen profile appear as `"Not executed"` in their secti
 
 ---
 
-## ⚖ Legal Notice
+## Legal Notice
 
 CERBERUS is provided for education, malware analysis, digital forensics, and security research.
 

@@ -1,7 +1,7 @@
-# CERBERUS — GUI Responsiveness & Window Constraints (Issue #18)
+# CERBERUS: GUI Responsiveness & Window Constraints (Issue #18)
 
 Data: 2026-09-09
-Escopo: correção da Issue #18 — população imediata da Identity após seleção de
+Escopo: correção da Issue #18, população imediata da Identity após seleção de
 arquivo, mínimo de janela definido e aplicado, e layout funcional sem clipping
 em 980×650.
 Branch: `fix/batch-performance`. Base: HEAD `1e40470` (batch via multiprocessing, PR #20).
@@ -29,9 +29,9 @@ impossível de reduzir, seções utilizáveis no mínimo, e nenhum elemento cort
 `_choose_file` apenas registrava o caminho e atualizava `TARGET`/status. Todos os
 seis campos + path só eram escritos por `_render_result` dentro do evento de
 resultado final. Além disso, `_reset_view` (chamado ao iniciar um scan) **apagava**
-a Identity — o dado recém-selecionado sumia até a conclusão da análise.
+a Identity, o dado recém-selecionado sumia até a conclusão da análise.
 
-### 2.2 Grid sem folga — a Identity virava uma fresta
+### 2.2 Grid sem folga: a Identity virava uma fresta
 O conteúdo usa `grid` com colunas de peso 3/5/3. O grid do Tk só distribui espaço
 extra proporcional aos pesos; sem folga, ele **encolhe todas as colunas pela mesma
 quantia absoluta** (proporcional ao peso) a partir do tamanho solicitado. Como
@@ -48,7 +48,7 @@ Os principais "vilões" de largura solicitada: `factors_text` (`tk.Text` padrão
 colunas de largura) e as colunas fixas da Treeview de evidências.
 
 ### 2.3 Outros pontos
-- **`wraplength=260` fixo** nos labels da Identity — mais largo que a coluna em
+- **`wraplength=260` fixo** nos labels da Identity, mais largo que a coluna em
   janelas estreitas → texto cortado.
 - **Hash SHA-256 (64 hex)** é um **token único sem quebras**: `wraplength` não o
   quebra (Tk só quebra em limites de palavra) → estourava a coluna.
@@ -70,7 +70,7 @@ Todas em `modules/gui.py`.
   lê apenas os 32 primeiros bytes do header (custo desprezível) e já entrega
   `detected_type` + `compatibility` com a mesma coloração usada no resultado
   final (Compatible/verde, Mismatch/vermelho, Unknown/amarelo).
-- **SHA-256:** em **thread daemon** (`calc_sha256`, stream 1MB) — não bloqueia a
+- **SHA-256:** em **thread daemon** (`calc_sha256`, stream 1MB), não bloqueia a
   janela nem em arquivos grandes. Enquanto calcula, o label mostra
   `Calculating...`; o resultado chega pela fila de eventos como
   `("identity", caminho, "hash", valor)`.
@@ -99,7 +99,7 @@ Redimensionou → o texto re-flui e nunca excede a coluna.
 - Colunas da Treeview de evidências: `82/150/260` → `70/130/220`.
 
 ### 3.6 `_reset_view` preserva a Identity
-Ao iniciar um scan, os seis campos + path **não são mais apagados** — o usuário
+Ao iniciar um scan, os seis campos + path **não são mais apagados**, o usuário
 vê os dados da seleção durante toda a análise; o `_render_result` os sobrepõe com
 os dados completos ao final.
 
@@ -107,7 +107,7 @@ os dados completos ao final.
 Removido o `self._result_reveal_job = None` duplicado.
 
 ### 3.8 Mínimo de janela
-`self.minsize(980, 650)` e geometria padrão `1240x780` **mantidos** — o
+`self.minsize(980, 650)` e geometria padrão `1240x780` **mantidos**, o
 enforcement já existia; agora o layout funciona de fato nesse mínimo.
 
 ---
@@ -140,10 +140,10 @@ Teste funcional dedicado (`gui_issue18_test.py`, app real sem mainloop):
 
 Regressão geral:
 
-- `python -m py_compile modules/gui.py` — OK
-- `import modules.gui` — OK
-- `python validate_all.py` — **ALL TESTS PASSED**
-- `python test_cache_hit.py` — PASS
+- `python -m py_compile modules/gui.py`, OK
+- `import modules.gui`, OK
+- `python validate_all.py`, **ALL TESTS PASSED**
+- `python test_cache_hit.py`, PASS
 
 ---
 
